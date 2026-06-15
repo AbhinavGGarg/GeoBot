@@ -11,6 +11,7 @@ import re
 import subprocess
 import threading
 import time
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +25,7 @@ from dotenv import load_dotenv
 SELENIUM_IMPORT_ERROR = None
 try:
     from selenium import webdriver
+    from selenium.common.exceptions import SessionNotCreatedException
     from selenium.common.exceptions import StaleElementReferenceException
     from selenium.webdriver import ChromeOptions
     from selenium.webdriver.chrome.service import Service
@@ -50,12 +52,16 @@ except ModuleNotFoundError as exc:
     class StaleElementReferenceException(Exception):
         pass
 
+    class SessionNotCreatedException(Exception):
+        pass
+
 
 STATE_DIR = Path("state")
 SEEN_POSTS_PATH = STATE_DIR / "seen_posts.json"
 GROUP_STATUS_PATH = STATE_DIR / "group_status.json"
 RUN_LOG_PATH = STATE_DIR / "run_log.csv"
 DRAFT_QUEUE_PATH = STATE_DIR / "draft_queue.csv"
+APPROVAL_URL_PATH = STATE_DIR / "approval_url.txt"
 
 GROUP_STATUSES = {
     "ok",
@@ -441,7 +447,16 @@ def setup_driver() -> webdriver.Chrome:
     user_data_dir = Path.cwd() / "chrome_data"
     options.add_argument(f"--user-data-dir={user_data_dir}")
     service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=options)
+    try:
+        return webdriver.Chrome(service=service, options=options)
+    except SessionNotCreatedException as exc:
+        raise SystemExit(
+            "Chrome could not start, usually because an old chromedriver/Chrome profile is still open.\n"
+            "Run:\n"
+            "  pkill -f chromedriver\n"
+            "  pkill -f \"chrome_data\"\n"
+            "Then start the runner again."
+        ) from exc
 
 
 def load_keywords(path: str) -> List[str]:
@@ -1601,11 +1616,16 @@ def run(args) -> None:
     if args.approve_before_send:
         args.approval_server = LocalApprovalServer(args.approval_host, args.approval_port)
         args.approval_server.start()
+        STATE_DIR.mkdir(exist_ok=True)
+        APPROVAL_URL_PATH.write_text(args.approval_server.url + "\n", encoding="utf-8")
+        if args.open_approval_page:
+            webbrowser.open(args.approval_server.url)
 
     print("\nReliable Geodo Facebook draft assistant starting.")
     print("It drafts only. It will not press Enter or click the Facebook send/post button.")
     if args.approval_server:
         print(f"Approval page: {args.approval_server.url}")
+        print(f"Approval URL saved to: {APPROVAL_URL_PATH}")
     print("Make sure Chrome is logged into Facebook before scanning begins.\n")
 
     try:
@@ -1694,6 +1714,8 @@ def parse_args():
     parser.add_argument("--approve-before-send", action="store_true")
     parser.add_argument("--approval-host", default="127.0.0.1")
     parser.add_argument("--approval-port", type=int, default=8765)
+    parser.add_argument("--open-approval-page", dest="open_approval_page", action="store_true", default=True)
+    parser.add_argument("--no-open-approval-page", dest="open_approval_page", action="store_false")
     parser.add_argument("--approved-send-cooldown-min", type=float, default=120)
     parser.add_argument("--approved-send-cooldown-max", type=float, default=180)
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
