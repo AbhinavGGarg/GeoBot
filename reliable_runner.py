@@ -1038,9 +1038,14 @@ def run(args) -> None:
     load_dotenv()
     apply_fast_test(args)
 
+    if args.reset_state:
+        ensure_state_files(reset_state=True)
+        print("Reset state/seen_posts.json and state/group_status.json.")
+        return
+
     keywords = load_keywords(args.keywords)
     group_urls = load_group_urls(args.groups)
-    seen_posts, group_status = ensure_state_files(args.reset_state)
+    seen_posts, group_status = ensure_state_files(reset_state=False)
 
     if not group_urls:
         raise SystemExit(f"No group URLs found in {args.groups}")

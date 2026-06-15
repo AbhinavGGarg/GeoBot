@@ -87,6 +87,8 @@ Reset post and group state:
 python reliable_runner.py --reset-state
 ```
 
+That command only clears `state/seen_posts.json` and `state/group_status.json`, then exits.
+
 ## Useful Options
 
 ```bash
