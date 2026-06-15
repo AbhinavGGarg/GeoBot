@@ -4,6 +4,8 @@ This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook
 
 Important: this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
 
+Optional approval mode: pass `--approve-before-send` and the runner will pause after typing each draft. It only clicks Facebook's comment send button if a human types `SEND` in Terminal for that specific draft.
+
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
 ## Setup
@@ -44,6 +46,12 @@ Normal run:
 
 ```bash
 python reliable_runner.py --groups group_urls.csv --keywords keywords.txt --max-drafts 5
+```
+
+Human-approved send mode:
+
+```bash
+python reliable_runner.py --fast-test --max-drafts 5 --debug --approve-before-send
 ```
 
 Fast test run with short waits:

@@ -939,6 +939,78 @@ def paste_draft(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
     return normalize_text(draft[:30])[:12] in normalize_text(typed_text)
 
 
+def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement) -> bool:
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", box)
+    time.sleep(0.4)
+    try:
+        box.click()
+    except Exception:
+        pass
+
+    candidates = driver.find_elements(
+        By.XPATH,
+        "//*[@role='button' and ("
+        "contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'comment') "
+        "or contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'send') "
+        "or contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'post')"
+        ")]",
+    )
+
+    scored = []
+    box_rect = driver.execute_script(
+        "const r = arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};",
+        box,
+    )
+    box_center_x = box_rect["x"] + box_rect["w"] / 2
+    box_center_y = box_rect["y"] + box_rect["h"] / 2
+
+    for candidate in candidates:
+        try:
+            if not candidate.is_displayed():
+                continue
+            aria_disabled = (candidate.get_attribute("aria-disabled") or "").lower()
+            disabled = candidate.get_attribute("disabled")
+            if aria_disabled == "true" or disabled:
+                continue
+            rect = driver.execute_script(
+                "const r = arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};",
+                candidate,
+            )
+            center_x = rect["x"] + rect["w"] / 2
+            center_y = rect["y"] + rect["h"] / 2
+            if center_y < box_center_y - 80:
+                continue
+            distance = abs(center_x - box_center_x) + abs(center_y - box_center_y)
+            scored.append((distance, candidate))
+        except Exception:
+            continue
+
+    if scored:
+        scored.sort(key=lambda item: item[0])
+        try:
+            scored[0][1].click()
+            time.sleep(1)
+            return True
+        except Exception:
+            pass
+
+    try:
+        ActionChains(driver).send_keys(Keys.ENTER).perform()
+        time.sleep(1)
+        return True
+    except Exception:
+        return False
+
+
+def ask_terminal_send_approval(draft: str, post_url: str) -> bool:
+    print("\nHuman approval required before sending.")
+    print(f"Post: {post_url}")
+    print("Draft:")
+    print(draft)
+    answer = input("Type SEND to click Facebook's comment send button, or press Enter to leave as draft: ")
+    return answer.strip().upper() == "SEND"
+
+
 def type_draft_in_review_tab(
     driver: webdriver.Chrome,
     candidate: CandidatePost,
@@ -1026,6 +1098,35 @@ def type_draft_in_review_tab(
         )
         log_draft(candidate, group_url, draft, "typed_left_for_review")
         log_run(group_url, candidate.post_url, "drafted", "Draft typed successfully.", candidate.score, candidate.matches)
+
+        if args.approve_before_send:
+            if ask_terminal_send_approval(draft, candidate.post_url):
+                if click_approved_comment_send(driver, box):
+                    mark_seen(
+                        seen_posts,
+                        candidate.fingerprint,
+                        group_url,
+                        candidate.post_url,
+                        "sent_after_approval",
+                        "Draft sent after explicit terminal approval.",
+                        candidate.score,
+                        candidate.matches,
+                    )
+                    log_draft(candidate, group_url, draft, "sent_after_terminal_approval")
+                    log_run(
+                        group_url,
+                        candidate.post_url,
+                        "sent_after_approval",
+                        "Sent after explicit terminal approval.",
+                        candidate.score,
+                        candidate.matches,
+                    )
+                    print("Approved draft sent. Moving to next group.")
+                    return True
+                print("Approval was given, but send click failed. Leaving draft open for manual review.")
+            else:
+                print("No approval entered. Leaving draft open for manual review.")
+
         print("Draft typed successfully. Leaving this tab open for review.")
         return True
     except Exception as exc:
@@ -1290,6 +1391,7 @@ def parse_args():
     parser.add_argument("--max-groups-per-run", type=int, default=0)
     parser.add_argument("--shuffle-groups", dest="shuffle_groups", action="store_true", default=True)
     parser.add_argument("--no-shuffle-groups", dest="shuffle_groups", action="store_false")
+    parser.add_argument("--approve-before-send", action="store_true")
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
     parser.add_argument("--close-skipped-tabs", dest="close_skipped_tabs", action="store_true", default=True)
     parser.add_argument("--no-close-skipped-tabs", dest="close_skipped_tabs", action="store_false")
