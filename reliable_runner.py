@@ -1002,12 +1002,40 @@ def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement) -> bo
         return False
 
 
-def ask_terminal_send_approval(draft: str, post_url: str) -> bool:
-    print("\nHuman approval required before sending.")
-    print(f"Post: {post_url}")
-    print("Draft:")
+def wait_with_countdown(seconds: float, label: str) -> None:
+    seconds = max(0, int(round(seconds)))
+    if seconds <= 0:
+        return
+    print(f"{label}: waiting {seconds} seconds.")
+    while seconds > 0:
+        step = min(30, seconds)
+        time.sleep(step)
+        seconds -= step
+        if seconds:
+            print(f"{label}: {seconds} seconds remaining...")
+
+
+def ask_terminal_send_approval(
+    draft: str,
+    group_url: str,
+    candidate: CandidatePost,
+) -> bool:
+    snippet = candidate.text.replace("\n", " ")[:500]
+    print("\n" + "=" * 72)
+    print("APPROVAL NEEDED: drafted Facebook comment")
+    print("=" * 72)
+    print(f"Group: {group_url}")
+    print(f"Post:  {candidate.post_url}")
+    print(f"Score: {candidate.score}")
+    print(f"Signals: {', '.join(candidate.matches[:12]) or 'none'}")
+    print("-" * 72)
+    print("Post snippet:")
+    print(snippet)
+    print("-" * 72)
+    print("Draft to send:")
     print(draft)
-    answer = input("Type SEND to click Facebook's comment send button, or press Enter to leave as draft: ")
+    print("=" * 72)
+    answer = input("Type SEND to publish this exact draft, or press Enter to leave it open: ")
     return answer.strip().upper() == "SEND"
 
 
@@ -1100,8 +1128,9 @@ def type_draft_in_review_tab(
         log_run(group_url, candidate.post_url, "drafted", "Draft typed successfully.", candidate.score, candidate.matches)
 
         if args.approve_before_send:
-            if ask_terminal_send_approval(draft, candidate.post_url):
+            if ask_terminal_send_approval(draft, group_url, candidate):
                 if click_approved_comment_send(driver, box):
+                    args.last_action_was_sent = True
                     mark_seen(
                         seen_posts,
                         candidate.fingerprint,
@@ -1122,6 +1151,8 @@ def type_draft_in_review_tab(
                         candidate.matches,
                     )
                     print("Approved draft sent. Moving to next group.")
+                    cooldown = random.uniform(args.approved_send_cooldown_min, args.approved_send_cooldown_max)
+                    wait_with_countdown(cooldown, "Approved-send cooldown")
                     return True
                 print("Approval was given, but send click failed. Leaving draft open for manual review.")
             else:
@@ -1306,6 +1337,7 @@ def run(args) -> None:
     open_draft_tabs: List[str] = []
     total_drafts = 0
     args.stop_requested = False
+    args.last_action_was_sent = False
 
     print("\nReliable Geodo Facebook draft assistant starting.")
     print("It drafts only. It will not press Enter or click the Facebook send/post button.")
@@ -1334,6 +1366,7 @@ def run(args) -> None:
                 continue
 
             before = total_drafts
+            args.last_action_was_sent = False
             created = scan_group(
                 driver,
                 scanner_tab,
@@ -1352,7 +1385,7 @@ def run(args) -> None:
                 print("Stopping because the maximum number of open draft tabs is already in use.")
                 return
 
-            if created and total_drafts < args.max_drafts:
+            if created and total_drafts < args.max_drafts and not args.last_action_was_sent:
                 cooldown = random.uniform(args.cooldown_min, args.cooldown_max)
                 print(f"Cooldown: waiting {round(cooldown)} seconds before the next group.")
                 time.sleep(cooldown)
@@ -1392,6 +1425,8 @@ def parse_args():
     parser.add_argument("--shuffle-groups", dest="shuffle_groups", action="store_true", default=True)
     parser.add_argument("--no-shuffle-groups", dest="shuffle_groups", action="store_false")
     parser.add_argument("--approve-before-send", action="store_true")
+    parser.add_argument("--approved-send-cooldown-min", type=float, default=120)
+    parser.add_argument("--approved-send-cooldown-max", type=float, default=180)
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
     parser.add_argument("--close-skipped-tabs", dest="close_skipped_tabs", action="store_true", default=True)
     parser.add_argument("--no-close-skipped-tabs", dest="close_skipped_tabs", action="store_false")
