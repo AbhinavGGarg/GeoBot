@@ -62,6 +62,8 @@ OPENAI_API_KEY= python reliable_runner.py --fast-test --max-drafts 1
 
 Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and only leaves a review tab open after a draft was successfully typed.
 
+For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft per group, leaves that drafted tab open for review, then moves on.
+
 ## State Files
 
 The runner creates and maintains:

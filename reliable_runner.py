@@ -108,9 +108,39 @@ STRONG_SIGNALS = [
     "marketing",
     "growth",
     "customer acquisition",
+    "client acquisition",
     "follow-up",
     "follow up",
     "deal",
+    "demand gen",
+    "revenue",
+    "revenue growth",
+    "business systems",
+    "sales systems",
+    "systems and processes",
+    "business process",
+    "business processes",
+    "operations",
+    "workflow",
+    "workflows",
+    "automation",
+    "business owners",
+    "tech services",
+    "web apps",
+    "ai solutions",
+    "potential clients",
+    "getting clients",
+    "find clients",
+    "more clients",
+    "what services",
+    "services does your business",
+    "business provide",
+    "business name",
+    "agency",
+    "recommend tools",
+    "what tools",
+    "struggling with",
+    "stopping your business",
 ]
 
 RELEVANCE_THRESHOLD = 2
@@ -469,6 +499,33 @@ def relevance_score(text: str, keywords: Sequence[str]) -> Tuple[int, List[str]]
             matches.append(signal)
             score += 2 if " " in signal else 1
 
+    business_terms = [
+        "business",
+        "service",
+        "services",
+        "clients",
+        "customers",
+        "systems",
+        "process",
+        "operations",
+        "marketing",
+        "sales",
+        "growth",
+        "automation",
+        "software",
+        "apps",
+        "ai",
+    ]
+    business_hits = [term for term in business_terms if term in lower]
+    if len(business_hits) >= 2 and "business context" not in matches:
+        matches.append("business context")
+        score += 2
+
+    question_terms = ["how do", "what are", "what's", "looking for", "need help", "any advice", "recommend"]
+    if any(term in lower for term in question_terms) and business_hits and "business question" not in matches:
+        matches.append("business question")
+        score += 1
+
     return score, matches
 
 
@@ -477,8 +534,11 @@ def article_has_comment_affordance(article: WebElement) -> bool:
         'div[contenteditable="true"][aria-label*="comment" i]',
         'div[contenteditable="true"][aria-label*="Comment"]',
         'div[contenteditable="true"][aria-label*="Write"]',
+        'div[contenteditable="true"][aria-placeholder*="comment" i]',
+        'div[contenteditable="true"][data-lexical-editor="true"]',
         'div[role="textbox"][contenteditable="true"]',
         '[aria-label*="Comment" i]',
+        '[aria-label*="Leave a comment" i]',
     ]
     for selector in selectors:
         try:
@@ -491,8 +551,10 @@ def article_has_comment_affordance(article: WebElement) -> bool:
     xpaths = [
         ".//*[normalize-space()='Comment']",
         ".//*[contains(@aria-label, 'Comment')]",
+        ".//*[contains(@aria-label, 'Leave a comment')]",
         ".//*[contains(text(), 'Comment')]",
         ".//*[contains(text(), 'Reply')]",
+        ".//*[@role='button' and .//*[contains(text(), 'Comment')]]",
     ]
     for xpath in xpaths:
         try:
@@ -633,7 +695,7 @@ def extract_context_from_article(article: WebElement) -> Tuple[str, List[str]]:
 
 def local_generate_draft(post_text: str, comments: Sequence[str], matches: Sequence[str]) -> str:
     combined = normalize_text(f"{post_text}\n{' '.join(comments)}")
-    if not any(signal in combined for signal in STRONG_SIGNALS):
+    if not any(signal in combined for signal in STRONG_SIGNALS) and "business context" not in matches:
         return "SKIP"
 
     def has(*terms: str) -> bool:
@@ -661,6 +723,16 @@ def local_generate_draft(post_text: str, comments: Sequence[str], matches: Seque
         options = [
             "Getting leads is only part of the problem. I’d focus just as much on lead quality, reply handling, and the follow-up process, because that’s where a lot of early pipeline quietly leaks.",
             "This is where a tighter GTM workflow helps: lead gen, outreach, follow-up, and pipeline tracking all need to stay connected. That’s the kind of problem Geodo is focused on for B2B teams.",
+        ]
+    elif has("business systems", "sales systems", "systems and processes", "operations", "workflow", "automation"):
+        options = [
+            "The systems/process side matters a lot once a business starts getting more conversations. Geodo is focused on that GTM workflow for B2B teams: lead gen, outreach, follow-up, and pipeline context staying in one place.",
+            "I’d look at this less as one isolated tool and more as the full workflow: where leads come from, how follow-up happens, and how the next step gets tracked. That’s the kind of connected process Geodo is built around.",
+        ]
+    elif has("what services", "business provide", "tech services", "web apps", "ai solutions", "business name", "potential clients"):
+        options = [
+            "Geodo is building in the B2B GTM space: lead generation, outreach, follow-up, and pipeline workflows for sales teams. The main idea is helping teams keep the whole process connected once potential clients start responding.",
+            "On our side, Geodo is focused on B2B sales workflows: finding leads, managing outreach, keeping follow-up organized, and making pipeline context easier to act on. Still early, but that connected GTM loop is the core.",
         ]
     else:
         options = [
@@ -695,7 +767,8 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
                         "Never include a link by default. Mention Geodo softly only when relevant. "
                         "Avoid hype, spam, generic praise, and repeating existing comments. "
                         "Return exactly SKIP if the post is not clearly about B2B sales, GTM, "
-                        "lead generation, outbound, CRM, SaaS, growth, pricing, or pipeline."
+                        "lead generation, outbound, CRM, SaaS, growth, pricing, pipeline, "
+                        "business systems, client acquisition, operations, automation, or business services."
                     ),
                 },
                 {
@@ -732,18 +805,25 @@ def find_target_article(driver: webdriver.Chrome, expected_text: str) -> Optiona
     return best_article or (find_articles(driver)[0] if find_articles(driver) else None)
 
 
-def find_comment_box(article: WebElement) -> Optional[WebElement]:
+def find_comment_box_in(elements_root, allow_generic_editor: bool = False) -> Optional[WebElement]:
     selectors = [
         'div[contenteditable="true"][aria-label*="comment" i]',
         'div[contenteditable="true"][aria-label*="Comment"]',
         'div[contenteditable="true"][aria-label*="Write"]',
+        'div[contenteditable="true"][aria-placeholder*="comment" i]',
         'div[role="textbox"][contenteditable="true"]',
+        '[role="textbox"][aria-label*="comment" i]',
+        '[role="textbox"][aria-placeholder*="comment" i]',
     ]
+    if allow_generic_editor:
+        selectors.append('div[contenteditable="true"][data-lexical-editor="true"]')
     for selector in selectors:
         try:
-            boxes = article.find_elements(By.CSS_SELECTOR, selector)
+            boxes = elements_root.find_elements(By.CSS_SELECTOR, selector)
         except StaleElementReferenceException:
             return None
+        except Exception:
+            continue
         for box in boxes:
             try:
                 if box.is_displayed():
@@ -753,16 +833,18 @@ def find_comment_box(article: WebElement) -> Optional[WebElement]:
     return None
 
 
-def open_comment_box(article: WebElement) -> Optional[WebElement]:
-    box = find_comment_box(article)
+def open_comment_box(driver: webdriver.Chrome, article: WebElement) -> Optional[WebElement]:
+    box = find_comment_box_in(article, allow_generic_editor=True) or find_comment_box_in(driver)
     if box:
         return box
 
     xpaths = [
         ".//*[normalize-space()='Comment']",
         ".//*[contains(@aria-label, 'Comment')]",
+        ".//*[contains(@aria-label, 'Leave a comment')]",
         ".//*[contains(text(), 'Comment')]",
         ".//*[contains(text(), 'Reply')]",
+        ".//*[@role='button' and .//*[contains(text(), 'Comment')]]",
     ]
     for xpath in xpaths:
         try:
@@ -774,7 +856,7 @@ def open_comment_box(article: WebElement) -> Optional[WebElement]:
                 if element.is_displayed():
                     element.click()
                     time.sleep(1)
-                    box = find_comment_box(article)
+                    box = find_comment_box_in(article, allow_generic_editor=True) or find_comment_box_in(driver)
                     if box:
                         return box
             except Exception:
@@ -850,7 +932,7 @@ def type_draft_in_review_tab(
             log_draft(candidate, group_url, draft, "skipped")
             return False
 
-        box = open_comment_box(article)
+        box = open_comment_box(driver, article)
         print(f"Comment box found in review tab: {'yes' if box else 'no'}")
         if not box:
             mark_seen(
