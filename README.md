@@ -52,6 +52,8 @@ Fast test run with short waits:
 python reliable_runner.py --fast-test --max-drafts 1 --debug
 ```
 
+Fast test still scans at least 15 scrolls per group by default. It only shortens wait times.
+
 Demo mode with no OpenAI key:
 
 ```bash
@@ -96,8 +98,9 @@ python reliable_runner.py \
   --groups group_urls.csv \
   --keywords keywords.txt \
   --max-drafts 5 \
-  --max-scrolls-per-group 40 \
-  --empty-scroll-limit 8 \
+  --max-scrolls-per-group 60 \
+  --min-scrolls-per-group 15 \
+  --empty-scroll-limit 15 \
   --cooldown-min 120 \
   --cooldown-max 180 \
   --max-open-draft-tabs 5

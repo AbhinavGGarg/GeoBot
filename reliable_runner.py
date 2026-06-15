@@ -951,6 +951,7 @@ def scan_group(
     empty_scrolls = 0
     drafted = 0
     not_commentable_seen = 0
+    min_scrolls = min(args.min_scrolls_per_group, args.max_scrolls_per_group)
 
     for scroll_num in range(1, args.max_scrolls_per_group + 1):
         print(f"Scroll {scroll_num}/{args.max_scrolls_per_group}")
@@ -982,13 +983,13 @@ def scan_group(
             else:
                 driver.switch_to.window(scanner_tab)
 
-        if empty_scrolls >= args.empty_scroll_limit:
+        if scroll_num >= min_scrolls and empty_scrolls >= args.empty_scroll_limit:
             articles = find_articles(driver)
             status = "not_commentable" if not_commentable_seen and articles else "no_matches"
             reason = (
                 "Relevant posts were found but none had a usable comment box or stable review URL."
                 if status == "not_commentable"
-                else f"No usable matches after {empty_scrolls} empty scrolls."
+                else f"No usable matches after {empty_scrolls} empty scrolls and {scroll_num} total scrolls."
             )
             update_group_status(group_status, group_url, status, reason)
             log_run(group_url, "", status, reason)
@@ -1030,8 +1031,9 @@ def apply_fast_test(args) -> None:
     args.post_load_max = 3
     args.scroll_delay_min = 0.8
     args.scroll_delay_max = 1.4
-    args.max_scrolls_per_group = min(args.max_scrolls_per_group, 10)
-    args.empty_scroll_limit = min(args.empty_scroll_limit, 3)
+    args.min_scrolls_per_group = max(args.min_scrolls_per_group, 15)
+    args.max_scrolls_per_group = max(args.max_scrolls_per_group, args.min_scrolls_per_group)
+    args.empty_scroll_limit = max(args.empty_scroll_limit, 15)
 
 
 def run(args) -> None:
@@ -1128,8 +1130,9 @@ def parse_args():
     parser.add_argument("--groups", default="group_urls.csv")
     parser.add_argument("--keywords", default="keywords.txt")
     parser.add_argument("--max-drafts", type=int, default=5)
-    parser.add_argument("--max-scrolls-per-group", type=int, default=40)
-    parser.add_argument("--empty-scroll-limit", type=int, default=8)
+    parser.add_argument("--max-scrolls-per-group", type=int, default=60)
+    parser.add_argument("--min-scrolls-per-group", type=int, default=15)
+    parser.add_argument("--empty-scroll-limit", type=int, default=15)
     parser.add_argument("--cooldown-min", type=float, default=120)
     parser.add_argument("--cooldown-max", type=float, default=180)
     parser.add_argument("--fast-test", action="store_true")
