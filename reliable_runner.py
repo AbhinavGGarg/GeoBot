@@ -715,48 +715,89 @@ def local_generate_draft(post_text: str, comments: Sequence[str], matches: Seque
         return any(term in combined for term in terms)
 
     existing_comment_text = normalize_text(" ".join(comments))
+    seed = int(hashlib.sha256(combined[:1200].encode("utf-8")).hexdigest()[:8], 16)
 
     options: List[str]
-    if has("cold email", "outbound", "email outreach"):
+    angle = "general"
+    if has("gohighlevel", "ghl", "snapshot", "appointment", "calendar", "sms campaign"):
+        angle = "ghl_agency_ops"
+        options = [
+            "GHL support is one of those things where the small backend details really decide whether the agency feels organized or chaotic. The CRM, automations, follow-ups, and handoffs all have to line up or leads slip through.",
+            "This is a solid backend ops offer. The part I’d care about most is whether the CRM updates, automations, calendar flow, and lead nurturing are all connected cleanly once volume picks up.",
+            "The GHL piece is useful because most agencies do not just need setup, they need the follow-up and pipeline motion to stay clean after new leads come in. That connected workflow is where tools like Geodo are focused too.",
+            "For agency owners, this kind of backend work can make a real difference. If CRM hygiene, automation setup, and lead follow-up are not tight, even good campaigns start leaking opportunities.",
+        ]
+    elif has("seo", "organic traffic", "content strategy", "website messaging", "ux", "search", "monthly visitors"):
+        angle = "saas_content_growth"
+        options = [
+            "The organic growth angle is strong, especially if the content is tied to conversion and follow-up instead of just traffic. For SaaS, the real win is turning the right visitors into qualified conversations.",
+            "Traffic growth is great, but I like that this connects it back to leads and funnel optimization. That handoff from content interest to actual sales follow-up is where a lot of SaaS teams lose momentum.",
+            "This is the kind of SaaS growth work that gets more useful when it plugs into the rest of the GTM motion. Content brings people in, but the follow-up and pipeline process decide how much of it turns into revenue.",
+            "For SaaS teams, SEO and content can work really well when the messaging, funnel, and lead follow-up are designed together. Otherwise you can get traffic without enough pipeline movement.",
+        ]
+    elif has("cold email", "outbound", "email outreach"):
+        angle = "outbound"
         options = [
             "Cold email can work, but the follow-up system matters more than the first message. I’d make sure targeting, reply context, and next steps stay connected so good conversations do not get lost.",
             "For outbound, I’d think about the full loop: who you target, what trigger makes the message relevant, and how follow-up gets handled once someone replies. That process usually beats just sending more volume.",
+            "The part that usually makes outbound work is not just the opener, it is what happens after the reply. Keeping lead context, follow-up, and pipeline steps connected is the boring part that actually matters.",
+            "I’d pay just as much attention to the reply workflow as the campaign itself. Good targeting creates conversations, but the follow-up process is what turns those conversations into pipeline.",
         ]
     elif has("landing page", "pricing", "conversion"):
+        angle = "conversion"
         options = [
             "I’d pair the landing page/pricing work with a really clear post-lead workflow. The page can create intent, but qualification and follow-up are usually where B2B teams either create pipeline or lose momentum.",
             "One useful angle is mapping what happens after someone converts: who follows up, what context they get, and how the deal moves forward. That GTM loop matters as much as the page itself.",
+            "The landing page can only do part of the job. I’d make sure the form, lead context, follow-up, and pipeline step are all designed together so interest does not just sit there.",
+            "Conversion work gets a lot better when it is connected to sales execution. Messaging can create the lead, but the next touch and qualification process decide whether it becomes real pipeline.",
         ]
     elif has("crm", "pipeline", "deal", "follow-up", "follow up"):
+        angle = "pipeline_crm"
         options = [
             "The pipeline piece is usually where this gets messy. If outreach, CRM notes, and follow-up live in different places, the team can have demand and still miss the next step.",
             "I’d look at the workflow end to end here. Better leads help, but the bigger win is keeping context, follow-up, and pipeline movement connected once conversations start.",
+            "CRM only helps if the next action is obvious. The teams that keep notes, replies, follow-ups, and deal stages connected usually get more out of the same lead flow.",
+            "This is where process matters more than another dashboard. If follow-ups and pipeline context are not kept clean, a lot of good conversations quietly go nowhere.",
         ]
     elif has("lead", "leads", "lead generation", "customer acquisition"):
+        angle = "lead_generation"
         options = [
             "Getting leads is only part of the problem. I’d focus just as much on lead quality, reply handling, and the follow-up process, because that’s where a lot of early pipeline quietly leaks.",
             "This is where a tighter GTM workflow helps: lead gen, outreach, follow-up, and pipeline tracking all need to stay connected. That’s the kind of problem Geodo is focused on for B2B teams.",
+            "I’d think about this as a full lead-to-pipeline problem. More leads help, but the bigger lift usually comes from better qualification, faster follow-up, and not losing context between steps.",
+            "Lead generation gets more valuable when the team has a clean way to handle replies and next steps. That is the workflow Geodo is trying to make less scattered for B2B sales teams.",
         ]
     elif has("business systems", "sales systems", "systems and processes", "operations", "workflow", "automation"):
+        angle = "systems_workflow"
         options = [
             "The systems/process side matters a lot once a business starts getting more conversations. Geodo is focused on that GTM workflow for B2B teams: lead gen, outreach, follow-up, and pipeline context staying in one place.",
             "I’d look at this less as one isolated tool and more as the full workflow: where leads come from, how follow-up happens, and how the next step gets tracked. That’s the kind of connected process Geodo is built around.",
+            "Systems get important fast when the business is growing. It is usually not just automation for its own sake, it is making sure leads, conversations, and next steps do not get scattered.",
+            "The process angle is underrated. Once marketing and sales activity picks up, having the lead source, follow-up, and pipeline stage connected can save a lot of messy manual work.",
         ]
     elif has("what services", "business provide", "tech services", "web apps", "ai solutions", "business name", "potential clients"):
+        angle = "business_services"
         options = [
             "Geodo is building in the B2B GTM space: lead generation, outreach, follow-up, and pipeline workflows for sales teams. The main idea is helping teams keep the whole process connected once potential clients start responding.",
             "On our side, Geodo is focused on B2B sales workflows: finding leads, managing outreach, keeping follow-up organized, and making pipeline context easier to act on. Still early, but that connected GTM loop is the core.",
+            "Geodo is in the B2B sales workflow lane. Think lead generation, outreach, follow-up, and pipeline context staying connected so teams are not jumping between a bunch of disconnected steps.",
+            "We are working on Geodo for B2B teams that want the sales motion to feel less scattered: leads, outreach, follow-up, and pipeline visibility in one connected workflow.",
         ]
     else:
         options = [
             "For early traction, I’d think less about just picking one channel and more about keeping the GTM loop tight once people start responding. That’s the kind of workflow Geodo is focused on for B2B teams: lead gen, outreach, follow-up, and pipeline staying connected.",
             "The useful angle here is making the motion repeatable without making it generic. Clear ICP, targeted outreach, and consistent follow-up usually matter more than simply adding more tools or volume.",
+            "The thing I’d watch is the handoff between interest and follow-up. A lot of teams can create activity, but the real leverage is keeping the next step clear once someone shows intent.",
+            "This feels like a workflow problem as much as a growth problem. If the team can keep lead context, outreach, and follow-up connected, the same effort usually produces cleaner pipeline.",
         ]
 
-    for draft in options:
+    rotated = options[seed % len(options):] + options[:seed % len(options)]
+    for draft in rotated:
         if normalize_text(draft)[:90] not in existing_comment_text:
+            print(f"[local-generator] angle={angle}")
             return draft
-    return options[0]
+    print(f"[local-generator] angle={angle}")
+    return rotated[0]
 
 
 def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequence[str]) -> str:
