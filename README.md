@@ -2,9 +2,9 @@
 
 This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery and human-reviewed comment drafting.
 
-Important: this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
+Important: by default this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button unless you run the explicit human-approved send mode. Draft tabs are left open so a human can review, edit, and decide whether to post.
 
-Optional approval mode: pass `--approve-before-send` and the runner will pause after typing each draft. Terminal shows the group, post, score, matched signals, post snippet, and draft. It only clicks Facebook's comment send button if a human types `SEND` for that specific draft. After an approved send, it waits 2-3 minutes by default before continuing.
+Optional approval mode: pass `--approve-before-send` and the runner starts a local review page at `http://127.0.0.1:8765`. The page shows the group, post, score, matched signals, post snippet, and draft. It only clicks Facebook's comment send button if a human clicks `Approve Send` for that specific draft. After an approved send, it waits 2-3 minutes by default before continuing.
 
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
@@ -52,6 +52,12 @@ Human-approved send mode:
 
 ```bash
 python reliable_runner.py --fast-test --max-drafts 5 --debug --approve-before-send
+```
+
+Open the exact approval URL printed in Terminal. It includes a local token and looks like:
+
+```text
+http://127.0.0.1:8765/?token=...
 ```
 
 Fast test run with short waits:
