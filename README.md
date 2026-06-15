@@ -64,6 +64,8 @@ Chrome uses the local `chrome_data/` profile folder so you can log into Facebook
 
 For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft per group, leaves that drafted tab open for review, then moves on.
 
+Group order is shuffled by default, and any group checked recently is skipped for `--group-revisit-hours 72` hours unless you pass `--repeat`. This prevents restarts from opening the same first few groups over and over.
+
 ## State Files
 
 The runner creates and maintains:
@@ -103,6 +105,7 @@ python reliable_runner.py \
   --max-scrolls-per-group 60 \
   --min-scrolls-per-group 15 \
   --empty-scroll-limit 15 \
+  --group-revisit-hours 72 \
   --cooldown-min 120 \
   --cooldown-max 180 \
   --max-open-draft-tabs 5

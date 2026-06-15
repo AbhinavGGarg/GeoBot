@@ -223,7 +223,7 @@ def load_group_urls(path: str) -> List[str]:
                 url = line.strip()
                 if url and not url.startswith("#"):
                     urls.append(normalize_url(url))
-    return urls
+    return list(dict.fromkeys(urls))
 
 
 def ensure_state_files(reset_state: bool = False) -> Tuple[Dict, Dict]:
@@ -322,6 +322,19 @@ def update_group_status(
         "drafts_created": drafts_created,
     }
     write_json(GROUP_STATUS_PATH, group_status)
+
+
+def hours_since(iso_value: str) -> Optional[float]:
+    if not iso_value:
+        return None
+    try:
+        checked_at = datetime.fromisoformat(iso_value)
+    except ValueError:
+        return None
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=timezone.utc)
+    delta = datetime.now(timezone.utc) - checked_at
+    return delta.total_seconds() / 3600
 
 
 def log_run(
@@ -1029,6 +1042,7 @@ def scan_group(
         log_run(group_url, "", status, reason)
         print(f"Moving to next group. Skipped reason: {reason or status}")
         return 0
+    update_group_status(group_status, group_url, "ok", "Scanning started.")
 
     empty_scrolls = 0
     drafted = 0
@@ -1092,11 +1106,17 @@ def scan_group(
     return drafted
 
 
-def should_skip_group(group_status: Dict, group_url: str, repeat: bool) -> Tuple[bool, str]:
-    if repeat:
+def should_skip_group(group_status: Dict, group_url: str, args) -> Tuple[bool, str]:
+    if args.repeat:
         return False, ""
     record = group_status.get(group_url) or {}
     status = record.get("status", "")
+    checked_hours_ago = hours_since(record.get("last_checked", ""))
+    if checked_hours_ago is not None and checked_hours_ago < args.group_revisit_hours:
+        return True, (
+            f"checked {checked_hours_ago:.1f}h ago with status {status or 'unknown'} "
+            f"(cooldown {args.group_revisit_hours:g}h)"
+        )
     if status in BAD_GROUP_STATUSES:
         return True, f"previous status is {status}"
     return False, ""
@@ -1130,6 +1150,10 @@ def run(args) -> None:
     keywords = load_keywords(args.keywords)
     group_urls = load_group_urls(args.groups)
     seen_posts, group_status = ensure_state_files(reset_state=False)
+    if args.shuffle_groups:
+        random.shuffle(group_urls)
+    if args.max_groups_per_run > 0:
+        group_urls = group_urls[: args.max_groups_per_run]
 
     if not group_urls:
         raise SystemExit(f"No group URLs found in {args.groups}")
@@ -1159,7 +1183,7 @@ def run(args) -> None:
                 continue
             visited_this_run.add(group_url)
 
-            skip, skip_reason = should_skip_group(group_status, group_url, args.repeat)
+            skip, skip_reason = should_skip_group(group_status, group_url, args)
             if skip:
                 print(f"\nOpening group {index}/{len(group_urls)}: {group_url}")
                 print(f"Group status: skipped - {skip_reason}")
@@ -1221,6 +1245,10 @@ def parse_args():
     parser.add_argument("--repeat", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--reset-state", action="store_true")
+    parser.add_argument("--group-revisit-hours", type=float, default=72)
+    parser.add_argument("--max-groups-per-run", type=int, default=0)
+    parser.add_argument("--shuffle-groups", dest="shuffle_groups", action="store_true", default=True)
+    parser.add_argument("--no-shuffle-groups", dest="shuffle_groups", action="store_false")
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
     parser.add_argument("--close-skipped-tabs", dest="close_skipped_tabs", action="store_true", default=True)
     parser.add_argument("--no-close-skipped-tabs", dest="close_skipped_tabs", action="store_false")
