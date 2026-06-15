@@ -1,0 +1,4 @@
+selenium
+webdriver-manager
+python-dotenv
+openai>=1.0.0
