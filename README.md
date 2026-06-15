@@ -1,236 +1,104 @@
-# 📢 Facebook Comment Bot
+# Geodo Facebook Draft Assistant
 
-![Facebook Comment Bot](https://img.shields.io/badge/Facebook%20Comment-Bot-blue)
-![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT4-green)
+This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery and human-reviewed comment drafting.
 
-A **Selenium-based bot** designed to automatically post **human-like comments** on a specified Facebook post using **OpenAI's language models**. This bot simulates genuine user interactions to enhance engagement on your Facebook posts.
+Important: this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
 
----
+Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
-## 📋 Table of Contents
+## Setup
 
-- [🌟 Features](#🌟-features)
-- [🔧 Prerequisites](#🔧-prerequisites)
-- [💻 Installation](#💻-installation)
-- [⚙️ Configuration](#⚙️-configuration)
-- [🚀 Usage](#🚀-usage)
-- [🔑 Handling Login](#🔑-handling-login)
-- [📝 Logging and Debugging](#📝-logging-and-debugging)
-- [⚠️ Ethical Considerations](#⚠️-ethical-considerations)
-- [🛠️ Troubleshooting](#🛠️-troubleshooting)
-- [📄 License](#📄-license)
-- [📞 Contact](#📞-contact)
-- [🔗 Acknowledgements](#🔗-acknowledgements)
+1. Create and activate a virtual environment:
 
----
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-## 🌟 Features
+2. Install dependencies:
 
-- **Automated Commenting:** Automatically generate and post comments on a specified Facebook post.
-- **Human-like Interactions:** Simulates human behavior with random pauses, mouse movements, and typing patterns to mimic genuine user interactions.
-- **OpenAI Integration:** Utilizes OpenAI's language models to generate contextually relevant and engaging comments.
-- **Robust Logging:** Comprehensive logging for monitoring bot activities and debugging.
-- **Error Handling:** Captures and logs errors, raising exceptions for critical issues.
+```bash
+pip install -r requirements.txt
+```
 
----
+3. Create `.env` from the example:
 
-## 🔧 Prerequisites
+```bash
+cp .env.example .env
+```
 
-Before setting up the bot, ensure you have the following:
+4. Optional: add an OpenAI key to `.env`.
 
-- **Python 3.7 or Higher:** [Download Python](https://www.python.org/downloads/)
-- **Google Chrome Browser:** Ensure it's installed on your system.
-- **ChromeDriver:** Managed automatically by `webdriver-manager`, so no manual setup is required.
-- **OpenAI API Key:** Sign up at [OpenAI](https://platform.openai.com/signup/) to obtain your API key.
-- **Facebook Account:** A Facebook account to post comments.
+```bash
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-4o-mini
+```
 
----
+If `OPENAI_API_KEY` is missing, the runner uses a local template generator. The local generator returns `SKIP` for posts that are not clearly relevant.
 
-## 💻 Installation
+5. Add Facebook group URLs to `group_urls.csv` with a `group_url` header, and edit `keywords.txt` as needed.
 
-1. **Clone the Repository:**
+## Run
 
-   ```bash
-   git clone https://github.com/thanhduy1706/ai-comment-bot.git
-   cd ai-comment-bot
-   ```
+Normal run:
 
-2. **Create a Virtual Environment (Optional but Recommended):**
+```bash
+python reliable_runner.py --groups group_urls.csv --keywords keywords.txt --max-drafts 5
+```
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+Fast test run with short waits:
 
-3. **Install Required Packages:**
+```bash
+python reliable_runner.py --fast-test --max-drafts 1 --debug
+```
 
-   Ensure you have pip installed. Then run:
+Demo mode with no OpenAI key:
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+OPENAI_API_KEY= python reliable_runner.py --fast-test --max-drafts 1
+```
 
-   `requirements.txt` Content:
+Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and only leaves a review tab open after a draft was successfully typed.
 
-   ```
-   selenium
-   webdriver-manager
-   openai==0.28
-   python-dotenv
-   pre-commit
-   ```
+## State Files
 
----
+The runner creates and maintains:
 
-## ⚙️ Configuration
+- `state/seen_posts.json`: stable post fingerprints that have already been drafted, skipped, or found not commentable.
+- `state/group_status.json`: last checked timestamp and status per group.
+- `state/run_log.csv`: group-level and post-level scan events.
+- `state/draft_queue.csv`: drafts that were typed or skipped by the generator.
 
-1. **Create a `.env` File:**
+Group statuses are:
 
-   In the root directory of the project, create a `.env` file to store your sensitive information.
+- `ok`
+- `private_or_join_required`
+- `inactive_no_recent_posts`
+- `not_commentable`
+- `no_matches`
+- `drafted`
+- `error`
 
-2. **Populate the `.env` File:**
+By default, the runner makes one pass through `group_urls.csv` and does not repeat duplicate group URLs in the same run. It also skips groups previously marked as private, inactive, not commentable, or no-match so it does not keep reopening bad group URLs. Pass `--repeat` to ignore those skips for a run.
 
-   Open the `.env` file in a text editor and add the following configurations:
+Reset post and group state:
 
-   ```makefile
-   OPENAI_API_KEY=your_openai_api_key_here
-   OPENAI_MODEL=gpt-4o-mini
-   OPENAI_PROMPT=Generate a friendly, specific, and engaging Facebook comment.
-   POST_URL=https://www.facebook.com/your_post_url_here
-   ```
+```bash
+python reliable_runner.py --reset-state
+```
 
-   Replace:
+## Useful Options
 
-   - `your_openai_api_key_here` with your actual OpenAI API key.
-   - `gpt-4o-mini` with the desired OpenAI model (e.g., `gpt-4`, `gpt-4-turbo`, `gpt-4o-mini`).
-   - `Generate a friendly, specific, and engaging Facebook comment.` with your desired OpenAI prompt.
-   - `https://www.facebook.com/your_post_url_here` with the URL of the Facebook post you want to comment on.
+```bash
+python reliable_runner.py \
+  --groups group_urls.csv \
+  --keywords keywords.txt \
+  --max-drafts 5 \
+  --max-scrolls-per-group 40 \
+  --empty-scroll-limit 8 \
+  --cooldown-min 120 \
+  --cooldown-max 180 \
+  --max-open-draft-tabs 5
+```
 
----
-
-## 🚀 Usage
-
-Follow these steps to run the Facebook Comment Bot:
-
-1. **Ensure Environment Variables are Set:**
-
-   Double-check your `.env` file to ensure all required variables are correctly set.
-
-2. **Run the Script:**
-
-   Execute the bot using the following command:
-
-   ```bash
-   python cmt.py
-   ```
-
-3. **Bot Execution Flow:**
-
-   - **Initialization:** The bot sets up the Chrome WebDriver with specified options to minimize detection.
-   - **Navigating to Post:** It navigates to the specified Facebook post URL.
-   - **Commenting Process:**
-     - The bot generates comments using OpenAI's API.
-     - Simulates human-like typing and interactions to post comments.
-     - Repeats the process based on `MAX_COMMENTS` and `MAX_ITERATIONS` settings.
-     - Periodically refreshes the page to maintain session stability.
-
-   **Example Command:**
-
-   ```bash
-   python cmt.py
-   ```
-
----
-
-## 🔑 Handling Login
-
-**Manual Login Process:**
-
-- **Step 1:** If not logged in, you need opens a new tab directing to Facebook's login page.
-- **Step 2:** Manually log in to Facebook in the newly opened tab.
-- **Step 3:** After successfully logging in, closes the login tab.
-- **Step 4:** Refreshes the main tab, and resumes the commenting process.
-
-_Note: This manual login step ensures that your credentials remain secure and adheres to Facebook's policies by avoiding automated login attempts._
-
----
-
-## 📝 Logging and Debugging
-
-The bot maintains detailed logs to monitor its activities and assist in debugging:
-
-1. **Log Files:**
-
-   - Stored in the `logs/` directory.
-   - Named using the timestamp format: `facebook_comment_bot_YYYYMMDD_HHMMSS.log`.
-
-2. **Log Levels:**
-
-   - `INFO`: General operational messages (e.g., driver setup, comment posting).
-   - `DEBUG`: Detailed information useful for debugging (e.g., pauses, mouse movements).
-   - `WARNING`: Non-critical issues (e.g., failed comment posts).
-   - `ERROR`: Critical problems that may halt execution.
-   - `CRITICAL`: Severe issues requiring immediate attention.
-
----
-
-## ⚠️ Ethical Considerations
-
-**Important:** Automating interactions on platforms like Facebook can violate their Terms of Service and Community Standards. Use such bots responsibly and ethically, ensuring compliance with all relevant policies.
-
-**Potential Risks:**
-
-- **Account Restrictions or Bans:** Automated actions can lead to your Facebook account being restricted or banned.
-- **Legal Implications:** Depending on jurisdiction and usage, there could be legal consequences.
-
-**Recommendation:** Use this bot for educational purposes only and ensure you have the necessary permissions to interact with the targeted Facebook posts.
-
----
-
-## 🛠️ Troubleshooting
-
-**Issue:** Bot fails to post comments.
-
-**Solution:**
-
-- Ensure you're logged into Facebook. If prompted, follow the manual login steps.
-- Check the `logs/` directory for detailed error messages.
-- Update the `COMMENT_BOX_XPATH` in the `CONFIG` if Facebook has updated its UI.
-
-**Issue:** "element click intercepted" error persists.
-
-**Solution:**
-
-- Enhance the `close_overlays` method to handle new pop-ups or overlays.
-- Implement additional delays to ensure elements are fully loaded.
-- Use more robust selectors to accurately locate the comment box.
-
-**Issue:** Unable to locate comment box.
-
-**Solution:**
-
-- Verify the `COMMENT_BOX_XPATH` in the `CONFIG`.
-- Update the XPath based on the current Facebook UI.
-- Ensure that Facebook hasn't changed the structure or labels of the comment box.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-## 📞 Contact
-
-For any inquiries or support, please contact thanhduy1706@gmail.com.
-
----
-
-## 🔗 Acknowledgements
-
-- Selenium
-- WebDriver Manager
-- OpenAI
-- Python-dotenv
+Use `--no-close-skipped-tabs` only when debugging failed review tabs. The default is to close tabs where a draft was not typed.
