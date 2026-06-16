@@ -117,8 +117,17 @@ STRONG_SIGNALS = [
     "landing page",
     "traction",
     "first users",
+    "100 users",
     "first 100 users",
+    "early stage",
+    "early-stage",
+    "hardest step",
+    "app/service",
+    "app service",
+    "getting traction",
     "conversion",
+    "conversions",
+    "users",
     "marketing",
     "growth",
     "customer acquisition",
@@ -699,7 +708,7 @@ def post_age_days(text: str, now: Optional[datetime] = None) -> Optional[float]:
         return 1.0
 
     relative_match = re.search(
-        r"\b(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)\b",
+        r"(?<!:)\b(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)\b(?!:)",
         lower,
     )
     if relative_match:
@@ -801,6 +810,8 @@ def relevance_score(text: str, keywords: Sequence[str]) -> Tuple[int, List[str]]
         "how can",
         "struggling",
         "stuck",
+        "hardest step",
+        "what has been",
     ]
     if any(term in lower for term in question_terms) and business_hits and "business question" not in matches:
         matches.append("business question")
@@ -821,6 +832,14 @@ def relevance_score(text: str, keywords: Sequence[str]) -> Tuple[int, List[str]]
     if any(term in lower for term in service_intent_terms) and business_hits and "service intent" not in matches:
         matches.append("service intent")
         score += 1
+
+    founder_traction_terms = ["traction", "gtm strategy", "marketing", "first users", "100 users", "conversion"]
+    founder_context_terms = ["founder", "founders", "early stage", "early-stage", "app/service", "app", "service"]
+    traction_hits = [term for term in founder_traction_terms if term in lower]
+    if len(traction_hits) >= 2 and any(term in lower for term in founder_context_terms):
+        if "founder traction question" not in matches:
+            matches.append("founder traction question")
+        score += 3
 
     return score, matches
 
@@ -1032,6 +1051,14 @@ def local_generate_draft(
             "This is a useful GHL ops offer because agencies usually need more than setup; they need the CRM, automations, calendar flow, and lead nurturing to stay connected. Geodo is working on that same connected workflow problem from the sales pipeline side.",
             "The GHL piece matters because lead follow-up can get messy fast once volume picks up. Geodo is built around a similar idea for B2B teams: keeping outreach, follow-ups, and pipeline movement from getting scattered.",
             "For agency owners, clean CRM hygiene and follow-up systems can be the difference between more leads and more actual pipeline. That is the kind of workflow gap Geodo is trying to make easier to manage.",
+        ]
+    elif has("early stage", "early-stage", "traction", "first users", "100 users", "gtm strategy", "app/service"):
+        angle = "founder_traction"
+        options = [
+            "For early traction, I’d probably focus on GTM strategy and first-user conversion before trying to scale channels. That’s the kind of workflow Geodo is built around: keeping outreach, follow-up, and pipeline context connected once people start responding.",
+            "The hardest part is usually connecting the pieces: who the ICP is, what channel gets replies, and how follow-up turns those replies into actual pipeline. Geodo is focused on making that GTM loop less scattered for early B2B teams.",
+            "Marketing can get attention, but the real unlock is turning that attention into qualified conversations and clean follow-up. That’s where Geodo fits: keeping lead gen, outreach, and next steps connected instead of losing context.",
+            "For an early app/service, I’d want the GTM motion tight before adding more volume: clear target, consistent outreach, fast follow-up, and a simple way to track what converts. That connected loop is what Geodo is trying to help with.",
         ]
     elif has("seo", "organic traffic", "content strategy", "website messaging", "ux", "search", "monthly visitors"):
         angle = "saas_content_growth"
