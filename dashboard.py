@@ -122,8 +122,8 @@ def checkbox(form: Dict[str, List[str]], name: str) -> bool:
 def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str, str]]:
     mode = form.get("mode", ["comment_auto"])[0]
     max_items = 1
-    cooldown_min = float_from_form(form, "cooldown_min", 120, 0, 3600)
-    cooldown_max = float_from_form(form, "cooldown_max", 180, cooldown_min, 3600)
+    cooldown_min = 120.0
+    cooldown_max = 120.0
     max_tabs = int_from_form(form, "max_tabs", 5, 1, 30)
     group_limit = int_from_form(form, "max_groups", 0, 0, 500)
     post_text = (form.get("post_text", [""])[0] or "").strip()
@@ -312,12 +312,14 @@ def page() -> str:
 
         <div class="grid">
           <div>
-            <label for="cooldown_min">Cooldown min sec</label>
-            <input id="cooldown_min" name="cooldown_min" type="number" min="0" value="120">
+            <label>Cooldown min sec</label>
+            <input name="cooldown_min" type="hidden" value="120">
+            <input type="text" value="120" disabled>
           </div>
           <div>
-            <label for="cooldown_max">Cooldown max sec</label>
-            <input id="cooldown_max" name="cooldown_max" type="number" min="0" value="180">
+            <label>Cooldown max sec</label>
+            <input name="cooldown_max" type="hidden" value="120">
+            <input type="text" value="120" disabled>
           </div>
         </div>
 
