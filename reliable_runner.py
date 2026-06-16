@@ -68,6 +68,7 @@ GROUP_STATUSES = {
     "post_drafted",
     "posted",
     "error",
+    "unavailable",
 }
 
 BAD_GROUP_STATUSES = {
@@ -75,6 +76,7 @@ BAD_GROUP_STATUSES = {
     "inactive_no_recent_posts",
     "not_commentable",
     "no_matches",
+    "unavailable",
 }
 
 HEADER_OR_NON_POST_SIGNALS = [
@@ -148,6 +150,32 @@ STRONG_SIGNALS = [
     "what tools",
     "struggling with",
     "stopping your business",
+    "appointment setting",
+    "booked calls",
+    "sales calls",
+    "demo calls",
+    "prospecting",
+    "linkedin outreach",
+    "cold calling",
+    "lead list",
+    "lead lists",
+    "sales funnel",
+    "funnel optimization",
+    "client onboarding",
+    "handoff",
+    "handoffs",
+    "gohighlevel",
+    "ghl",
+    "snapshot",
+    "calendar",
+    "sms",
+    "email campaign",
+    "digital agency",
+    "web design",
+    "seo",
+    "paid ads",
+    "ai automation",
+    "ai automations",
 ]
 
 RELEVANCE_THRESHOLD = 2
@@ -203,7 +231,8 @@ def setup_driver() -> webdriver.Chrome:
     options = ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-popup-blocking")
-    if os.getenv("GEODO_BACKGROUND_CHROME"):
+    background_chrome = bool(os.getenv("GEODO_BACKGROUND_CHROME"))
+    if background_chrome:
         options.add_argument("--window-size=1280,900")
         options.add_argument("--window-position=-2200,0")
         options.add_argument("--disable-backgrounding-occluded-windows")
@@ -215,7 +244,14 @@ def setup_driver() -> webdriver.Chrome:
     options.add_argument(f"--user-data-dir={user_data_dir}")
     service = Service(ChromeDriverManager().install())
     try:
-        return webdriver.Chrome(service=service, options=options)
+        driver = webdriver.Chrome(service=service, options=options)
+        if background_chrome:
+            try:
+                driver.set_window_size(1280, 900)
+                driver.set_window_position(-2200, 0)
+            except Exception:
+                pass
+        return driver
     except SessionNotCreatedException as exc:
         raise SystemExit(
             "Chrome could not start, usually because an old chromedriver/Chrome profile is still open.\n"
@@ -526,16 +562,59 @@ def page_has_comment_affordance(driver: webdriver.Chrome) -> bool:
     return False
 
 
+def has_join_group_prompt(driver: webdriver.Chrome) -> bool:
+    xpaths = [
+        "//*[self::span or self::div or self::a or self::button][normalize-space()='Join group']",
+        "//*[@aria-label='Join group' or contains(@aria-label, 'Join group')]",
+    ]
+    for xpath in xpaths:
+        try:
+            for element in driver.find_elements(By.XPATH, xpath)[:8]:
+                if element.is_displayed():
+                    return True
+        except Exception:
+            continue
+    return False
+
+
 def initial_group_status(driver: webdriver.Chrome, args) -> Tuple[str, str]:
     body = visible_body_text(driver)
     lower = body.lower()
     articles = find_articles(driver)
     debug_print(args, f"initial visible article count: {len(articles)}")
 
+    if any(
+        signal in lower
+        for signal in (
+            "this content isn't available",
+            "this content is not available",
+            "page isn't available",
+            "page is not available",
+            "this page isn't available",
+            "this page is not available",
+            "you must log in to continue",
+            "temporarily blocked",
+        )
+    ):
+        return "unavailable", "Facebook reports the group/page is unavailable from this session."
+
+    join_prompt = has_join_group_prompt(driver)
+    if join_prompt and any(
+        signal in lower
+        for signal in (
+            "private group",
+            "only members can see",
+            "answer the questions to join",
+            "request will be denied",
+            "join group",
+        )
+    ):
+        return "private_or_join_required", "Join/private prompt visible before discussion posts."
+
     if "no posts today" in lower and "no posts in the last month" in lower:
         return "inactive_no_recent_posts", "Facebook reports no recent posts."
 
-    if "join group" in lower and not articles and not page_has_comment_affordance(driver):
+    if join_prompt and not page_has_comment_affordance(driver):
         return "private_or_join_required", "Join prompt visible and no discussion posts are available."
 
     if any(signal in lower for signal in ("about this group", "group rules")) and not articles:
@@ -611,15 +690,58 @@ def relevance_score(text: str, keywords: Sequence[str]) -> Tuple[int, List[str]]
         "software",
         "apps",
         "ai",
+        "agency",
+        "outreach",
+        "appointments",
+        "funnel",
+        "ghl",
+        "gohighlevel",
+        "seo",
+        "ads",
+        "onboarding",
     ]
     business_hits = [term for term in business_terms if term in lower]
     if len(business_hits) >= 2 and "business context" not in matches:
         matches.append("business context")
         score += 2
 
-    question_terms = ["how do", "what are", "what's", "looking for", "need help", "any advice", "recommend"]
+    question_terms = [
+        "how do",
+        "what are",
+        "what's",
+        "looking for",
+        "need help",
+        "any advice",
+        "recommend",
+        "any recommendations",
+        "who can",
+        "can anyone",
+        "does anyone",
+        "where can",
+        "best way",
+        "what should",
+        "how can",
+        "struggling",
+        "stuck",
+    ]
     if any(term in lower for term in question_terms) and business_hits and "business question" not in matches:
         matches.append("business question")
+        score += 1
+
+    service_intent_terms = [
+        "need a",
+        "need someone",
+        "need help with",
+        "looking to hire",
+        "looking for someone",
+        "send me",
+        "dm me",
+        "drop a comment",
+        "interested in",
+        "open to",
+    ]
+    if any(term in lower for term in service_intent_terms) and business_hits and "service intent" not in matches:
+        matches.append("service intent")
         score += 1
 
     return score, matches

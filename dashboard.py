@@ -19,6 +19,12 @@ from urllib.parse import parse_qs
 ROOT = Path(__file__).resolve().parent
 RUNNER = ROOT / "reliable_runner.py"
 LOG_LIMIT = 1200
+MODE_LABELS = {
+    "comment_auto": "Find posts and auto-comment",
+    "comment_draft": "Find posts and draft comments only",
+    "post_auto": "Create standalone group post and publish",
+    "post_draft": "Create standalone group post draft only",
+}
 
 
 class RunnerState:
@@ -165,6 +171,27 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     return mode, command, env
 
 
+def preview_payload(form: Dict[str, List[str]]) -> Dict[str, object]:
+    mode, command, env = build_command(form)
+    auto_submit = "--auto-submit" in command
+    create_post = "--create-post" in command
+    cooldown_max = command[command.index("--cooldown-max") + 1] if "--cooldown-max" in command else ""
+    run_total_flag = "--max-posts" if create_post else "--max-drafts"
+    run_total = command[command.index(run_total_flag) + 1] if run_total_flag in command else ""
+    return {
+        "mode": mode,
+        "label": MODE_LABELS.get(mode, mode),
+        "command": " ".join(command),
+        "auto_submit": auto_submit,
+        "create_post": create_post,
+        "comments_per_post": 1,
+        "run_total": run_total,
+        "cooldown_min": "120",
+        "cooldown_max": cooldown_max,
+        "background_chrome": env.get("GEODO_BACKGROUND_CHROME") == "1",
+    }
+
+
 def page() -> str:
     return """<!doctype html>
 <html lang="en">
@@ -275,6 +302,18 @@ def page() -> str:
       white-space: pre-wrap;
     }
     .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; }
+    .preview {
+      margin-top: 14px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #10141b;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .preview strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 5px; }
+    .preview code { color: #d8dee9; overflow-wrap: anywhere; }
     @media (max-width: 900px) {
       main { grid-template-columns: 1fr; }
       pre { height: 420px; }
@@ -299,6 +338,7 @@ def page() -> str:
           <option value="post_auto">Create standalone group post and publish</option>
           <option value="post_draft">Create standalone group post draft only</option>
         </select>
+        <div id="modeHint" class="hint"></div>
 
         <div class="grid">
           <div>
@@ -340,6 +380,8 @@ def page() -> str:
         <label class="check"><input type="checkbox" name="background_chrome"> Keep Chrome off to the side when possible</label>
         <label class="check"><input type="checkbox" name="debug" checked> Show debug logs</label>
 
+        <div id="preview" class="preview">Loading command preview...</div>
+
         <div class="actions">
           <button id="startBtn" type="submit">Start Workflow</button>
           <button id="stopBtn" class="danger" type="button">Stop</button>
@@ -358,9 +400,64 @@ def page() -> str:
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const refreshBtn = document.getElementById('refreshBtn');
+    const modeSelect = document.getElementById('mode');
+    const modeHint = document.getElementById('modeHint');
+    const preview = document.getElementById('preview');
+    const modeCopy = {
+      comment_auto: 'Scans groups, drafts one contextual Geodo comment per post, then clicks send after typing.',
+      comment_draft: 'Scans groups and leaves one contextual Geodo draft open per post for manual review.',
+      post_auto: 'Creates standalone group posts and clicks publish after typing.',
+      post_draft: 'Creates standalone group post drafts and leaves them open for manual review.'
+    };
+    let lastPreviewState = '';
+    function escapeHTML(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+    function previewParams() {
+      const params = new URLSearchParams();
+      params.set('mode', modeSelect.value);
+      params.set('max_items', document.getElementById('max_items').value || '3');
+      params.set('max_tabs', document.getElementById('max_tabs').value || '5');
+      params.set('cooldown_max', document.getElementById('cooldown_max').value || '180');
+      params.set('max_groups', document.getElementById('max_groups').value || '0');
+      params.set('profile_dir', document.getElementById('profile_dir').value || '');
+      params.set('post_text', document.getElementById('post_text').value || '');
+      if (document.querySelector('input[name="repeat"]').checked) params.set('repeat', 'on');
+      if (document.querySelector('input[name="background_chrome"]').checked) params.set('background_chrome', 'on');
+      if (document.querySelector('input[name="debug"]').checked) params.set('debug', 'on');
+      return params;
+    }
+
+    async function updatePreview(force = false) {
+      const params = previewParams();
+      const previewState = params.toString();
+      if (!force && previewState === lastPreviewState) return;
+      lastPreviewState = previewState;
+      modeHint.textContent = modeCopy[modeSelect.value] || '';
+      const res = await fetch('/api/preview', {
+        method: 'POST',
+        body: params,
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        preview.textContent = data.error || 'Could not build preview';
+        return;
+      }
+      const action = data.auto_submit ? 'AUTO-SEND ON' : 'DRAFT ONLY';
+      const type = data.create_post ? 'standalone posts' : 'comments on found posts';
+      const chrome = data.background_chrome ? 'Chrome side-positioning ON' : 'Chrome opens normally';
+      preview.innerHTML = `<strong>${escapeHTML(data.label)} - ${action}</strong>`
+        + `Run total: ${escapeHTML(data.run_total)} ${type}. Comments per post: ${escapeHTML(data.comments_per_post)}. `
+        + `Cooldown: 120-${escapeHTML(data.cooldown_max)}s. ${chrome}.<br>`
+        + `<code>${escapeHTML(data.command)}</code>`;
+    }
 
     async function refresh() {
-      const res = await fetch('/api/status');
+      const res = await fetch('/api/status', { cache: 'no-store' });
       const data = await res.json();
       statusEl.classList.toggle('running', data.running);
       statusEl.querySelector('span:last-child').textContent = data.running
@@ -380,12 +477,16 @@ def page() -> str:
       if (!data.ok) alert(data.error || 'Could not start workflow');
       await refresh();
     });
+    form.addEventListener('input', updatePreview);
+    form.addEventListener('change', updatePreview);
     stopBtn.addEventListener('click', async () => {
       await fetch('/api/stop', { method: 'POST' });
       await refresh();
     });
     refreshBtn.addEventListener('click', refresh);
     setInterval(refresh, 1500);
+    setInterval(updatePreview, 1000);
+    updatePreview(true);
     refresh();
   </script>
 </body>
@@ -400,6 +501,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         encoded = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -417,6 +520,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length).decode("utf-8")
         form = parse_qs(body, keep_blank_values=True)
+        if self.path.startswith("/api/preview"):
+            try:
+                payload = preview_payload(form)
+                payload["ok"] = True
+                self.send_body(200, json.dumps(payload), "application/json")
+            except Exception as exc:
+                self.send_body(400, json.dumps({"ok": False, "error": str(exc)}), "application/json")
+            return
         if self.path.startswith("/api/start"):
             try:
                 mode, command, env = build_command(form)

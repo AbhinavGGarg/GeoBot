@@ -38,7 +38,7 @@ OPENAI_MODEL=gpt-4o-mini
 
 If `OPENAI_API_KEY` is missing, the runner uses a local template generator. The local generator returns `SKIP` for posts that are not clearly relevant.
 
-5. Add Facebook group URLs to `group_urls.csv` with a `group_url` header, and edit `keywords.txt` as needed.
+5. Add Facebook group URLs to `group_urls.csv` with a `group_url` header, and edit `keywords.txt` as needed. The repo ships with a larger B2B/SaaS/agency/lead-gen seed pool, and the runner deduplicates URLs automatically.
 
 ## Run
 
@@ -54,7 +54,7 @@ Then open:
 http://127.0.0.1:8787
 ```
 
-The dashboard lets you choose comment automation, comment drafting, standalone post publishing, or standalone post drafting from one page. It runs the same local Selenium runner underneath, so Chrome still opens on your machine with your logged-in Facebook profile. GeoBot only takes one action per post; it does not stack multiple comments or replies onto the same post. The dashboard keeps comments per post locked at `1`, while the run total controls how many different opportunities it can process.
+The dashboard lets you choose comment automation, comment drafting, standalone post publishing, or standalone post drafting from one page. It runs the same local Selenium runner underneath, so Chrome still opens on your machine with your logged-in Facebook profile. GeoBot only takes one action per post; it does not stack multiple comments or replies onto the same post. The dashboard keeps comments per post locked at `1`, while the run total controls how many different opportunities it can process. The command preview updates live so you can confirm whether the selected workflow is draft-only or auto-submit before starting.
 
 The optional "Keep Chrome off to the side when possible" dashboard setting opens Selenium Chrome in an off-screen position. macOS may still briefly focus Chrome when Selenium controls it, but this reduces how much it interrupts the dashboard.
 
@@ -125,8 +125,9 @@ Group statuses are:
 - `post_drafted`
 - `posted`
 - `error`
+- `unavailable`
 
-By default, the runner makes one pass through `group_urls.csv` and does not repeat duplicate group URLs in the same run. It also skips groups previously marked as private, inactive, not commentable, or no-match so it does not keep reopening bad group URLs. Pass `--repeat` to ignore those skips for a run.
+By default, the runner makes one pass through `group_urls.csv` and does not repeat duplicate group URLs in the same run. It also skips groups previously marked as private, unavailable, inactive, not commentable, or no-match so it does not keep reopening bad group URLs. Pass `--repeat` to ignore those skips for a run.
 
 Reset post and group state:
 
