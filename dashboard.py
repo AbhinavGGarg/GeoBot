@@ -142,11 +142,13 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     if mode in {"comment_auto", "comment_draft"}:
         command.extend(["--max-drafts", str(max_items)])
         command.extend(["--max-open-draft-tabs", str(max_tabs)])
+        command.append("--no-shuffle-groups")
         if mode == "comment_auto":
             command.append("--auto-submit")
     elif mode in {"post_auto", "post_draft"}:
         command.extend(["--create-post", "--max-posts", str(max_items)])
         command.extend(["--max-open-draft-tabs", str(max_tabs)])
+        command.append("--no-shuffle-groups")
         if mode == "post_auto":
             command.append("--auto-submit")
         if post_text:

@@ -611,15 +611,14 @@ def initial_group_status(driver: webdriver.Chrome, args) -> Tuple[str, str]:
             "only members can see",
             "answer the questions to join",
             "request will be denied",
-            "join group",
         )
-    ):
+    ) and not articles:
         return "private_or_join_required", "Join/private prompt visible before discussion posts."
 
     if "no posts today" in lower and "no posts in the last month" in lower:
         return "inactive_no_recent_posts", "Facebook reports no recent posts."
 
-    if join_prompt and not page_has_comment_affordance(driver):
+    if join_prompt and not articles and not page_has_comment_affordance(driver):
         return "private_or_join_required", "Join prompt visible and no discussion posts are available."
 
     if any(signal in lower for signal in ("about this group", "group rules")) and not articles:
