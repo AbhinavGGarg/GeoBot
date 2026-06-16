@@ -736,49 +736,49 @@ def local_generate_draft(post_text: str, comments: Sequence[str], matches: Seque
     if has("gohighlevel", "ghl", "snapshot", "appointment", "calendar", "sms campaign"):
         angle = "ghl_agency_ops"
         options = [
-            "GHL support is one of those things where the small backend details really decide whether the agency feels organized or chaotic. The CRM, automations, follow-ups, and handoffs all have to line up or leads slip through.",
-            "This is a solid backend ops offer. The part I’d care about most is whether the CRM updates, automations, calendar flow, and lead nurturing are all connected cleanly once volume picks up.",
-            "The GHL piece is useful because most agencies do not just need setup, they need the follow-up and pipeline motion to stay clean after new leads come in. That connected workflow is where tools like Geodo are focused too.",
-            "For agency owners, this kind of backend work can make a real difference. If CRM hygiene, automation setup, and lead follow-up are not tight, even good campaigns start leaking opportunities.",
+            "GHL support is one of those things where the backend details decide whether an agency feels organized or chaotic. That same handoff problem is what Geodo is focused on for B2B teams: keeping leads, follow-up, and pipeline context connected.",
+            "This is a useful GHL ops offer because agencies usually need more than setup; they need the CRM, automations, calendar flow, and lead nurturing to stay connected. Geodo is working on that same connected workflow problem from the sales pipeline side.",
+            "The GHL piece matters because lead follow-up can get messy fast once volume picks up. Geodo is built around a similar idea for B2B teams: keeping outreach, follow-ups, and pipeline movement from getting scattered.",
+            "For agency owners, clean CRM hygiene and follow-up systems can be the difference between more leads and more actual pipeline. That is the kind of workflow gap Geodo is trying to make easier to manage.",
         ]
     elif has("seo", "organic traffic", "content strategy", "website messaging", "ux", "search", "monthly visitors"):
         angle = "saas_content_growth"
         options = [
-            "The organic growth angle is strong, especially if the content is tied to conversion and follow-up instead of just traffic. For SaaS, the real win is turning the right visitors into qualified conversations.",
-            "Traffic growth is great, but I like that this connects it back to leads and funnel optimization. That handoff from content interest to actual sales follow-up is where a lot of SaaS teams lose momentum.",
-            "This is the kind of SaaS growth work that gets more useful when it plugs into the rest of the GTM motion. Content brings people in, but the follow-up and pipeline process decide how much of it turns into revenue.",
-            "For SaaS teams, SEO and content can work really well when the messaging, funnel, and lead follow-up are designed together. Otherwise you can get traffic without enough pipeline movement.",
+            "The organic growth angle is strong, especially when content is tied to conversion and follow-up instead of just traffic. That handoff from visitor interest to qualified pipeline is the kind of GTM workflow Geodo is focused on.",
+            "Traffic growth is great, but I like that this connects it back to leads and funnel optimization. Geodo sits in that next step too: helping B2B teams keep lead context and follow-up organized once people show interest.",
+            "This kind of SaaS growth work gets more useful when it plugs into the rest of the GTM motion. Content brings people in, but Geodo is focused on the follow-up and pipeline side that decides whether it turns into revenue.",
+            "For SaaS teams, SEO and content work better when messaging, funnel, and lead follow-up are designed together. That connected motion is exactly the lane Geodo is building for.",
         ]
     elif has("cold email", "outbound", "email outreach"):
         angle = "outbound"
         options = [
-            "Cold email can work, but the follow-up system matters more than the first message. I’d make sure targeting, reply context, and next steps stay connected so good conversations do not get lost.",
-            "For outbound, I’d think about the full loop: who you target, what trigger makes the message relevant, and how follow-up gets handled once someone replies. That process usually beats just sending more volume.",
-            "The part that usually makes outbound work is not just the opener, it is what happens after the reply. Keeping lead context, follow-up, and pipeline steps connected is the boring part that actually matters.",
-            "I’d pay just as much attention to the reply workflow as the campaign itself. Good targeting creates conversations, but the follow-up process is what turns those conversations into pipeline.",
+            "Cold email can work, but the follow-up system matters more than the first message. Geodo is built around that exact outbound loop: keeping targeting, replies, next steps, and pipeline context connected.",
+            "For outbound, I’d think about the full loop: who you target, what makes the message relevant, and how follow-up gets handled once someone replies. That is the workflow Geodo is trying to make less scattered for B2B teams.",
+            "The part that usually makes outbound work is not just the opener, it is what happens after the reply. Geodo is focused on keeping that lead context, follow-up, and pipeline movement connected.",
+            "I’d pay just as much attention to the reply workflow as the campaign itself. Good targeting creates conversations, but Geodo is more about making sure those conversations do not get lost after the first response.",
         ]
     elif has("landing page", "pricing", "conversion"):
         angle = "conversion"
         options = [
-            "I’d pair the landing page/pricing work with a really clear post-lead workflow. The page can create intent, but qualification and follow-up are usually where B2B teams either create pipeline or lose momentum.",
-            "One useful angle is mapping what happens after someone converts: who follows up, what context they get, and how the deal moves forward. That GTM loop matters as much as the page itself.",
-            "The landing page can only do part of the job. I’d make sure the form, lead context, follow-up, and pipeline step are all designed together so interest does not just sit there.",
-            "Conversion work gets a lot better when it is connected to sales execution. Messaging can create the lead, but the next touch and qualification process decide whether it becomes real pipeline.",
+            "I’d pair the landing page/pricing work with a clear post-lead workflow. The page creates intent, but Geodo is focused on the next step: qualification, follow-up, and moving that interest into pipeline.",
+            "One useful angle is mapping what happens after someone converts: who follows up, what context they get, and how the deal moves forward. That GTM loop is the exact kind of workflow Geodo is built around.",
+            "The landing page can only do part of the job. Geodo is more focused on what happens after the form: keeping lead context, follow-up, and pipeline steps tied together.",
+            "Conversion work gets stronger when it is connected to sales execution. Messaging can create the lead, but Geodo is aimed at the next touch and qualification process that turns it into real pipeline.",
         ]
     elif has("crm", "pipeline", "deal", "follow-up", "follow up"):
         angle = "pipeline_crm"
         options = [
-            "The pipeline piece is usually where this gets messy. If outreach, CRM notes, and follow-up live in different places, the team can have demand and still miss the next step.",
-            "I’d look at the workflow end to end here. Better leads help, but the bigger win is keeping context, follow-up, and pipeline movement connected once conversations start.",
-            "CRM only helps if the next action is obvious. The teams that keep notes, replies, follow-ups, and deal stages connected usually get more out of the same lead flow.",
-            "This is where process matters more than another dashboard. If follow-ups and pipeline context are not kept clean, a lot of good conversations quietly go nowhere.",
+            "The pipeline piece is usually where this gets messy. If outreach, CRM notes, and follow-up live in different places, that is exactly the kind of gap Geodo is trying to clean up for B2B teams.",
+            "I’d look at the workflow end to end here. Better leads help, but Geodo is focused on the bigger win: keeping context, follow-up, and pipeline movement connected once conversations start.",
+            "CRM only helps if the next action is obvious. Geodo is built around making notes, replies, follow-ups, and deal stages easier to keep connected from the same lead flow.",
+            "This is where process matters more than another dashboard. Geodo is aimed at the follow-up and pipeline context that keeps good conversations from quietly going nowhere.",
         ]
     elif has("lead", "leads", "lead generation", "customer acquisition"):
         angle = "lead_generation"
         options = [
-            "Getting leads is only part of the problem. I’d focus just as much on lead quality, reply handling, and the follow-up process, because that’s where a lot of early pipeline quietly leaks.",
+            "Getting leads is only part of the problem. Geodo is focused on what happens after that too: lead quality, reply handling, follow-up, and keeping early pipeline from quietly leaking.",
             "This is where a tighter GTM workflow helps: lead gen, outreach, follow-up, and pipeline tracking all need to stay connected. That’s the kind of problem Geodo is focused on for B2B teams.",
-            "I’d think about this as a full lead-to-pipeline problem. More leads help, but the bigger lift usually comes from better qualification, faster follow-up, and not losing context between steps.",
+            "I’d think about this as a full lead-to-pipeline problem. More leads help, but Geodo is built around the bigger lift: better qualification, faster follow-up, and not losing context between steps.",
             "Lead generation gets more valuable when the team has a clean way to handle replies and next steps. That is the workflow Geodo is trying to make less scattered for B2B sales teams.",
         ]
     elif has("business systems", "sales systems", "systems and processes", "operations", "workflow", "automation"):
@@ -786,8 +786,8 @@ def local_generate_draft(post_text: str, comments: Sequence[str], matches: Seque
         options = [
             "The systems/process side matters a lot once a business starts getting more conversations. Geodo is focused on that GTM workflow for B2B teams: lead gen, outreach, follow-up, and pipeline context staying in one place.",
             "I’d look at this less as one isolated tool and more as the full workflow: where leads come from, how follow-up happens, and how the next step gets tracked. That’s the kind of connected process Geodo is built around.",
-            "Systems get important fast when the business is growing. It is usually not just automation for its own sake, it is making sure leads, conversations, and next steps do not get scattered.",
-            "The process angle is underrated. Once marketing and sales activity picks up, having the lead source, follow-up, and pipeline stage connected can save a lot of messy manual work.",
+            "Systems get important fast when the business is growing. Geodo is not really automation for its own sake; it is about making sure leads, conversations, and next steps do not get scattered.",
+            "The process angle is underrated. Once marketing and sales activity picks up, Geodo is focused on keeping the lead source, follow-up, and pipeline stage connected without a lot of messy manual work.",
         ]
     elif has("what services", "business provide", "tech services", "web apps", "ai solutions", "business name", "potential clients"):
         angle = "business_services"
@@ -800,9 +800,9 @@ def local_generate_draft(post_text: str, comments: Sequence[str], matches: Seque
     else:
         options = [
             "For early traction, I’d think less about just picking one channel and more about keeping the GTM loop tight once people start responding. That’s the kind of workflow Geodo is focused on for B2B teams: lead gen, outreach, follow-up, and pipeline staying connected.",
-            "The useful angle here is making the motion repeatable without making it generic. Clear ICP, targeted outreach, and consistent follow-up usually matter more than simply adding more tools or volume.",
-            "The thing I’d watch is the handoff between interest and follow-up. A lot of teams can create activity, but the real leverage is keeping the next step clear once someone shows intent.",
-            "This feels like a workflow problem as much as a growth problem. If the team can keep lead context, outreach, and follow-up connected, the same effort usually produces cleaner pipeline.",
+            "The useful angle here is making the motion repeatable without making it generic. That is where Geodo fits in: clear ICP, targeted outreach, and consistent follow-up staying connected instead of turning into random activity.",
+            "The thing I’d watch is the handoff between interest and follow-up. Geodo is focused on that exact moment, where a lead shows intent and the next step needs to stay clear.",
+            "This feels like a workflow problem as much as a growth problem. Geodo is built around keeping lead context, outreach, and follow-up connected so the same effort turns into cleaner pipeline.",
         ]
 
     rotated = options[seed % len(options):] + options[:seed % len(options)]
@@ -832,8 +832,10 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
                     "role": "system",
                     "content": (
                         "Write one short, natural Facebook comment for a human to review. "
-                        "Never include a link by default. Mention Geodo softly only when relevant. "
+                        "Every non-SKIP comment must mention Geodo exactly once, naturally, and tie it to a specific point from the post. "
+                        "Never include a link by default. Do not make Geodo the whole comment. "
                         "Avoid hype, spam, generic praise, and repeating existing comments. "
+                        "Use 1-3 sentences and sound like a normal founder/operator responding in context. "
                         "Return exactly SKIP if the post is not clearly about B2B sales, GTM, "
                         "lead generation, outbound, CRM, SaaS, growth, pricing, pipeline, "
                         "business systems, client acquisition, operations, automation, or business services."
@@ -842,6 +844,8 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
                 {
                     "role": "user",
                     "content": (
+                        "Product context: Geodo helps B2B teams keep lead generation, outreach, follow-up, "
+                        "qualification, and pipeline context connected.\n\n"
                         f"Matched keywords/signals: {', '.join(matches)}\n\n"
                         f"Original post:\n{post_text[:2400]}\n\n"
                         f"Visible existing comments/replies, avoid repeating them:\n"
@@ -850,7 +854,11 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
                 },
             ],
         )
-        return response.choices[0].message.content.strip()
+        draft = response.choices[0].message.content.strip()
+        if draft.upper() != "SKIP" and "geodo" not in normalize_text(draft):
+            print("[warn] OpenAI draft did not mention Geodo, using local generator.")
+            return local_generate_draft(post_text, comments, matches)
+        return draft
     except Exception as exc:
         print(f"[warn] OpenAI generation failed, using local generator: {exc}")
         return local_generate_draft(post_text, comments, matches)
