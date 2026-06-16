@@ -42,6 +42,20 @@ If `OPENAI_API_KEY` is missing, the runner uses a local template generator. The 
 
 ## Run
 
+Local dashboard:
+
+```bash
+python dashboard.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8787
+```
+
+The dashboard lets you choose comment automation, comment drafting, standalone post publishing, or standalone post drafting from one page. It runs the same local Selenium runner underneath, so Chrome still opens on your machine with your logged-in Facebook profile.
+
 Normal run:
 
 ```bash
