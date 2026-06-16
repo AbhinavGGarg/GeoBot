@@ -79,6 +79,11 @@ BAD_GROUP_STATUSES = {
     "unavailable",
 }
 
+POST_BAD_GROUP_STATUSES = {
+    "private_or_join_required",
+    "unavailable",
+}
+
 HEADER_OR_NON_POST_SIGNALS = [
     "about this group",
     "group rules",
@@ -1369,12 +1374,17 @@ def clickable_self_or_parent(driver: webdriver.Chrome, element: WebElement) -> W
 
 
 def open_group_post_composer(driver: webdriver.Chrome) -> Optional[WebElement]:
+    click_discussion_if_available(driver)
+    time.sleep(0.7)
+
+    existing_box = find_group_post_box(driver)
+    if existing_box:
+        return existing_box
+
     trigger_xpaths = [
-        "//*[contains(normalize-space(.), 'Write something')]",
-        "//*[contains(normalize-space(.), \"What's on your mind\")]",
-        "//*[contains(normalize-space(.), 'Create a public post')]",
-        "//*[contains(normalize-space(.), 'Start a discussion')]",
-        "//*[contains(normalize-space(.), 'Say something')]",
+        "//*[@role='button' and (contains(., 'Write something') or contains(., \"What's on your mind\") or contains(., 'Create a public post') or contains(., 'Start a discussion') or contains(., 'Say something'))]",
+        "//*[@aria-label and (contains(@aria-label, 'Create post') or contains(@aria-label, 'Create a post') or contains(@aria-label, 'Write something') or contains(@aria-label, 'Start a discussion'))]",
+        "//*[self::span or self::div][string-length(normalize-space(.)) < 90 and (contains(normalize-space(.), 'Write something') or contains(normalize-space(.), \"What's on your mind\") or contains(normalize-space(.), 'Create a public post') or contains(normalize-space(.), 'Start a discussion') or contains(normalize-space(.), 'Say something'))]",
     ]
     for xpath in trigger_xpaths:
         for element in driver.find_elements(By.XPATH, xpath)[:12]:
@@ -1384,7 +1394,9 @@ def open_group_post_composer(driver: webdriver.Chrome) -> Optional[WebElement]:
                 trigger = clickable_self_or_parent(driver, element)
                 driver.execute_script("arguments[0].scrollIntoView({block:'center'});", trigger)
                 time.sleep(0.5)
-                trigger.click()
+                print(f"Trying group post composer trigger: {normalize_text(element.text or element.get_attribute('aria-label') or '')[:80]}")
+                if not click_or_js_click(driver, trigger):
+                    continue
                 time.sleep(2)
                 box = find_group_post_box(driver)
                 if box:
@@ -1395,22 +1407,26 @@ def open_group_post_composer(driver: webdriver.Chrome) -> Optional[WebElement]:
 
 
 def find_group_post_box(driver: webdriver.Chrome) -> Optional[WebElement]:
-    roots: List[WebElement] = []
+    roots: List[Tuple[object, bool]] = []
     try:
-        roots.extend([dialog for dialog in driver.find_elements(By.CSS_SELECTOR, "div[role='dialog']") if dialog.is_displayed()])
+        roots.extend((dialog, True) for dialog in driver.find_elements(By.CSS_SELECTOR, "div[role='dialog']") if dialog.is_displayed())
     except Exception:
         pass
-    roots.append(driver)
+    roots.append((driver, False))
 
     selectors = [
-        'div[role="textbox"][contenteditable="true"]',
-        'div[contenteditable="true"][data-lexical-editor="true"]',
+        'div[role="textbox"][contenteditable="true"][aria-label*="Create" i]',
+        'div[role="textbox"][contenteditable="true"][aria-label*="Write" i]',
+        'div[role="textbox"][contenteditable="true"][aria-label*="mind" i]',
+        'div[contenteditable="true"][aria-label*="Create" i]',
         'div[contenteditable="true"][aria-label*="Write" i]',
         'div[contenteditable="true"][aria-label*="mind" i]',
         'div[contenteditable="true"][aria-placeholder*="Write" i]',
         'div[contenteditable="true"][aria-placeholder*="mind" i]',
+        'div[contenteditable="true"][data-lexical-editor="true"]',
+        'div[role="textbox"][contenteditable="true"]',
     ]
-    for root in roots:
+    for root, is_dialog in roots:
         for selector in selectors:
             try:
                 boxes = root.find_elements(By.CSS_SELECTOR, selector)
@@ -1418,11 +1434,56 @@ def find_group_post_box(driver: webdriver.Chrome) -> Optional[WebElement]:
                 continue
             for box in boxes:
                 try:
-                    if box.is_displayed():
-                        return box
+                    if not box.is_displayed():
+                        continue
+                    label = normalize_text(
+                        " ".join(
+                            [
+                                box.get_attribute("aria-label") or "",
+                                box.get_attribute("aria-placeholder") or "",
+                                box.text or "",
+                            ]
+                        )
+                    )
+                    if any(term in label for term in ["comment", "reply", "answer as"]):
+                        continue
+                    if box.get_attribute("data-lexical-editor") == "true" and not is_dialog:
+                        continue
+                    return box
                 except Exception:
                     continue
     return None
+
+
+def standalone_group_status(driver: webdriver.Chrome, args) -> Tuple[str, str]:
+    body = visible_body_text(driver)
+    lower = body.lower()
+    if any(
+        signal in lower
+        for signal in (
+            "this content isn't available",
+            "this content is not available",
+            "page isn't available",
+            "page is not available",
+            "this page isn't available",
+            "this page is not available",
+            "you must log in to continue",
+            "temporarily blocked",
+        )
+    ):
+        return "unavailable", "Facebook reports the group/page is unavailable from this session."
+    if has_join_group_prompt(driver) and any(
+        signal in lower
+        for signal in (
+            "private group",
+            "only members can see",
+            "answer the questions to join",
+            "request will be denied",
+            "join group",
+        )
+    ):
+        return "private_or_join_required", "Join/private prompt visible before posting is available."
+    return "ok", ""
 
 
 def paste_post_text(driver: webdriver.Chrome, box: WebElement, post_text: str) -> bool:
@@ -1523,7 +1584,7 @@ def create_post_in_group(
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         time.sleep(random.uniform(args.group_load_min, args.group_load_max))
 
-        status, reason = initial_group_status(driver, args)
+        status, reason = standalone_group_status(driver, args)
         print(f"Group status: {status}{f' - {reason}' if reason else ''}")
         if status != "ok":
             update_group_status(group_status, group_url, status, reason)
@@ -1813,18 +1874,21 @@ def scan_group(
     return drafted
 
 
-def should_skip_group(group_status: Dict, group_url: str, args) -> Tuple[bool, str]:
+def should_skip_group(group_status: Dict, group_url: str, args, purpose: str = "comment") -> Tuple[bool, str]:
     if args.repeat:
         return False, ""
     record = group_status.get(group_url) or {}
     status = record.get("status", "")
+    bad_statuses = POST_BAD_GROUP_STATUSES if purpose == "post" else BAD_GROUP_STATUSES
     checked_hours_ago = hours_since(record.get("last_checked", ""))
-    if checked_hours_ago is not None and checked_hours_ago < args.group_revisit_hours:
+    if checked_hours_ago is not None and checked_hours_ago < args.group_revisit_hours and (
+        purpose != "post" or status in bad_statuses
+    ):
         return True, (
             f"checked {checked_hours_ago:.1f}h ago with status {status or 'unknown'} "
             f"(cooldown {args.group_revisit_hours:g}h)"
         )
-    if status in BAD_GROUP_STATUSES:
+    if status in bad_statuses:
         return True, f"previous status is {status}"
     return False, ""
 
@@ -1894,7 +1958,7 @@ def run_create_posts(args) -> None:
                 continue
             visited_this_run.add(group_url)
 
-            skip, skip_reason = should_skip_group(group_status, group_url, args)
+            skip, skip_reason = should_skip_group(group_status, group_url, args, purpose="post")
             if skip:
                 print(f"\nOpening group {index}/{len(group_urls)}: {group_url}")
                 print(f"Group status: skipped - {skip_reason}")

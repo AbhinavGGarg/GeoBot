@@ -406,8 +406,8 @@ def page() -> str:
     const modeCopy = {
       comment_auto: 'Scans groups, drafts one contextual Geodo comment per post, then clicks send after typing.',
       comment_draft: 'Scans groups and leaves one contextual Geodo draft open per post for manual review.',
-      post_auto: 'Creates standalone group posts and clicks publish after typing.',
-      post_draft: 'Creates standalone group post drafts and leaves them open for manual review.'
+      post_auto: 'Creates standalone posts in public/member groups where Facebook exposes a posting composer, then clicks publish.',
+      post_draft: 'Creates standalone post drafts in public/member groups where Facebook exposes a posting composer, then leaves them open for review.'
     };
     let lastPreviewState = '';
     function escapeHTML(value) {

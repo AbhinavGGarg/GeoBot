@@ -155,6 +155,6 @@ python reliable_runner.py \
 
 Add `--auto-submit` only when you want full-auto posting. Without it, the tool stays in draft-only review mode.
 
-Use `--create-post` for standalone Facebook group posts. If you omit `--post-text` and `--post-file`, the runner uses the built-in Geodo post text. Without `--auto-submit`, it types the post and leaves it open for review.
+Use `--create-post` for standalone Facebook group posts. This works best in public groups or groups your Facebook account has joined where Facebook exposes the group post composer. If a group is private, join-required, unavailable, or does not allow member posts, the runner logs the reason and moves on. If you omit `--post-text` and `--post-file`, the runner uses the built-in Geodo post text. Without `--auto-submit`, it types the post and leaves it open for review.
 
 Use `--no-close-skipped-tabs` only when debugging failed review tabs. The default is to close tabs where a draft was not typed.
