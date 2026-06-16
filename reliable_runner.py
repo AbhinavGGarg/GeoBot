@@ -203,7 +203,12 @@ def setup_driver() -> webdriver.Chrome:
     options = ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-popup-blocking")
-    options.add_argument("--start-maximized")
+    if os.getenv("GEODO_BACKGROUND_CHROME"):
+        options.add_argument("--window-size=1280,900")
+        options.add_argument("--window-position=-2200,0")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+    else:
+        options.add_argument("--start-maximized")
     options.add_experimental_option("detach", True)
     configured_profile_dir = os.getenv("GEODO_CHROME_PROFILE_DIR")
     user_data_dir = Path(configured_profile_dir).expanduser() if configured_profile_dir else Path.cwd() / "chrome_data"

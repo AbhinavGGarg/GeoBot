@@ -130,6 +130,7 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     profile_dir = (form.get("profile_dir", [""])[0] or "").strip()
     repeat = checkbox(form, "repeat")
     debug = checkbox(form, "debug")
+    background_chrome = checkbox(form, "background_chrome")
 
     command = [sys.executable, str(RUNNER)]
     if mode in {"comment_auto", "comment_draft"}:
@@ -159,6 +160,8 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     env["PYTHONUNBUFFERED"] = "1"
     if profile_dir:
         env["GEODO_CHROME_PROFILE_DIR"] = profile_dir
+    if background_chrome:
+        env["GEODO_BACKGROUND_CHROME"] = "1"
     return mode, command, env
 
 
@@ -299,14 +302,17 @@ def page() -> str:
 
         <div class="grid">
           <div>
-            <label for="max_items">Comments/posts</label>
+            <label for="max_items">Run total</label>
             <input id="max_items" name="max_items" type="number" min="1" max="50" value="3">
           </div>
           <div>
-            <label for="max_tabs">Open tabs</label>
-            <input id="max_tabs" name="max_tabs" type="number" min="1" max="30" value="5">
+            <label>Comments per post</label>
+            <input type="text" value="1" disabled>
           </div>
         </div>
+
+        <label for="max_tabs">Open tabs</label>
+        <input id="max_tabs" name="max_tabs" type="number" min="1" max="30" value="5">
 
         <div class="grid">
           <div>
@@ -331,6 +337,7 @@ def page() -> str:
         <textarea id="post_text" name="post_text">Quick question for B2B founders: where does your lead follow-up usually break down? Geodo is built around keeping lead gen, outreach, follow-up, and pipeline context connected once people start replying.</textarea>
 
         <label class="check"><input type="checkbox" name="repeat"> Ignore recent group cooldown for this run</label>
+        <label class="check"><input type="checkbox" name="background_chrome"> Keep Chrome off to the side when possible</label>
         <label class="check"><input type="checkbox" name="debug" checked> Show debug logs</label>
 
         <div class="actions">
