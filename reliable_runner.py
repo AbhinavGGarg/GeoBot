@@ -1289,10 +1289,7 @@ def scan_group(
 
             success = type_draft_in_review_tab(driver, candidate, group_url, seen_posts, args)
             if success:
-                if args.last_action_was_sent:
-                    close_current_tab_and_return(driver, scanner_tab)
-                else:
-                    open_draft_tabs.append(driver.current_window_handle)
+                open_draft_tabs.append(driver.current_window_handle)
                 drafted += 1
                 status = "posted" if args.last_action_was_sent else "drafted"
                 reason = "One comment posted." if args.last_action_was_sent else "One draft created."

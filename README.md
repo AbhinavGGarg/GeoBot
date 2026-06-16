@@ -4,7 +4,7 @@ This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook
 
 Important: draft-only is the default. In default mode, the runner does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
 
-Optional full-auto mode: pass `--auto-submit` when you explicitly want the runner to submit drafted comments. In that mode, it types the comment, clicks the nearby Facebook comment send/post control, closes the posted tab, waits for the configured cooldown, and continues scanning.
+Optional full-auto mode: pass `--auto-submit` when you explicitly want the runner to submit drafted comments. In that mode, it types the comment, clicks the nearby Facebook comment send/post control, leaves the posted tab open for later review, waits for the configured cooldown, and continues scanning.
 
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
@@ -68,9 +68,9 @@ Demo mode with no OpenAI key:
 OPENAI_API_KEY= python reliable_runner.py --fast-test --max-drafts 1
 ```
 
-Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and leaves a review tab open after a draft was successfully typed in draft-only mode. In `--auto-submit` mode, it closes the posted tab and returns to scanning.
+Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and leaves a review tab open after a draft was successfully typed in draft-only mode. In `--auto-submit` mode, it also leaves posted tabs open so you can review what was sent later.
 
-For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft or posted comment per group, then moves on.
+For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft or posted comment per group, leaves that tab open, then moves on.
 
 Group order is shuffled by default, and any group checked recently is skipped for `--group-revisit-hours 72` hours unless you pass `--repeat`. This prevents restarts from opening the same first few groups over and over.
 
