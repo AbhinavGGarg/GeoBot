@@ -299,9 +299,8 @@ def page() -> str:
 
         <div class="grid">
           <div>
-            <label for="max_items">Max different posts/groups this run</label>
+            <label for="max_items">Max comments/posts</label>
             <input id="max_items" name="max_items" type="number" min="1" max="50" value="3">
-            <div class="hint">Each post still gets at most one action.</div>
           </div>
           <div>
             <label for="max_tabs">Max open tabs</label>
