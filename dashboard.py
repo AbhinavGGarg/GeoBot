@@ -308,6 +308,22 @@ def page() -> str:
       white-space: pre-wrap;
     }
     .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; }
+    .workflow-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .workflow-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #10141b;
+      padding: 11px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .workflow-card strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 4px; }
     .preview {
       margin-top: 14px;
       padding: 12px;
@@ -337,6 +353,17 @@ def page() -> str:
   <main>
     <section>
       <form id="runForm">
+        <div class="workflow-cards">
+          <div class="workflow-card">
+            <strong>Engage posts</strong>
+            Find recent relevant conversations and comment with Geodo context.
+          </div>
+          <div class="workflow-card">
+            <strong>Publish campaign</strong>
+            Write one post and distribute it to eligible Facebook groups.
+          </div>
+        </div>
+
         <label for="mode">Workflow</label>
         <select id="mode" name="mode">
           <option value="comment_auto">Find posts and auto-comment</option>

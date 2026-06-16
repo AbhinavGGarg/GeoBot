@@ -953,19 +953,7 @@ def detect_candidates(
             continue
 
         if not post_url:
-            not_commentable_count += 1
-            mark_seen(
-                seen_posts,
-                fingerprint,
-                group_url,
-                post_url,
-                "not_commentable",
-                "No stable post URL was available for opening a review tab.",
-                score,
-                matches,
-            )
-            log_run(group_url, "", "not_commentable", "Missing stable post URL.", score, matches)
-            continue
+            print("No stable post URL found; will try drafting directly in the feed.")
 
         candidates.append(CandidatePost(article, text, post_url, fingerprint, score, matches))
 
@@ -1894,6 +1882,115 @@ def type_draft_in_review_tab(
                 pass
 
 
+def type_draft_in_feed(
+    driver: webdriver.Chrome,
+    candidate: CandidatePost,
+    group_url: str,
+    seen_posts: Dict,
+    args,
+) -> bool:
+    print("Drafting directly in the group feed because no stable post URL was available.")
+    try:
+        article = candidate.article
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", article)
+        time.sleep(0.8)
+
+        original_post, comments = extract_context_from_article(article)
+        draft = openai_generate_draft(original_post, comments, candidate.matches, recent_draft_texts())
+        print(f"Generated draft: {draft}")
+
+        if draft.strip().upper() == "SKIP":
+            mark_seen(
+                seen_posts,
+                candidate.fingerprint,
+                group_url,
+                candidate.post_url,
+                "skipped",
+                "Generator returned SKIP.",
+                candidate.score,
+                candidate.matches,
+            )
+            log_draft(candidate, group_url, draft, "skipped")
+            return False
+
+        box = open_comment_box(driver, article)
+        print(f"Comment box found in feed: {'yes' if box else 'no'}")
+        if not box:
+            mark_seen(
+                seen_posts,
+                candidate.fingerprint,
+                group_url,
+                candidate.post_url,
+                "not_commentable",
+                "No comment box opened in the feed.",
+                candidate.score,
+                candidate.matches,
+            )
+            return False
+
+        if not paste_draft(driver, box, draft):
+            mark_seen(
+                seen_posts,
+                candidate.fingerprint,
+                group_url,
+                candidate.post_url,
+                "error",
+                "Clipboard paste did not appear to type a feed draft.",
+                candidate.score,
+                candidate.matches,
+            )
+            return False
+
+        if args.auto_submit:
+            print("Feed draft typed. Auto-submit enabled, submitting comment now.")
+            if submit_comment(driver, box, draft):
+                args.last_action_was_sent = True
+                mark_seen(
+                    seen_posts,
+                    candidate.fingerprint,
+                    group_url,
+                    candidate.post_url,
+                    "posted",
+                    "Comment auto-posted directly from feed.",
+                    candidate.score,
+                    candidate.matches,
+                )
+                log_draft(candidate, group_url, draft, "auto_posted")
+                log_run(group_url, candidate.post_url, "posted", "Auto-posted directly from feed.", candidate.score, candidate.matches)
+                print("Feed comment posted successfully. Continuing after cooldown.")
+                return True
+            print("Feed auto-submit failed. Leaving the typed draft open for manual review.")
+
+        mark_seen(
+            seen_posts,
+            candidate.fingerprint,
+            group_url,
+            candidate.post_url,
+            "drafted",
+            "Draft typed directly in feed and left for human review.",
+            candidate.score,
+            candidate.matches,
+        )
+        log_draft(candidate, group_url, draft, "typed_left_for_review")
+        log_run(group_url, candidate.post_url, "drafted", "Feed draft typed successfully.", candidate.score, candidate.matches)
+        print("Feed draft typed successfully.")
+        return True
+    except Exception as exc:
+        print(f"Skipped reason: feed draft failed: {exc}")
+        mark_seen(
+            seen_posts,
+            candidate.fingerprint,
+            group_url,
+            candidate.post_url,
+            "error",
+            f"Feed draft failed: {exc}",
+            candidate.score,
+            candidate.matches,
+        )
+        log_run(group_url, candidate.post_url, "error", str(exc), candidate.score, candidate.matches)
+        return False
+
+
 def close_current_tab_and_return(driver: webdriver.Chrome, scanner_tab: str) -> None:
     try:
         if driver.current_window_handle != scanner_tab:
@@ -1950,9 +2047,14 @@ def scan_group(
                 args.stop_requested = True
                 return drafted
 
-            success = type_draft_in_review_tab(driver, candidate, group_url, seen_posts, args)
+            success = (
+                type_draft_in_review_tab(driver, candidate, group_url, seen_posts, args)
+                if candidate.post_url
+                else type_draft_in_feed(driver, candidate, group_url, seen_posts, args)
+            )
             if success:
-                open_draft_tabs.append(driver.current_window_handle)
+                if driver.current_window_handle not in open_draft_tabs:
+                    open_draft_tabs.append(driver.current_window_handle)
                 drafted += 1
                 status = "posted" if args.last_action_was_sent else "drafted"
                 reason = "One comment posted." if args.last_action_was_sent else "One draft created."
