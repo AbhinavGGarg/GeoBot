@@ -56,6 +56,7 @@ SEEN_POSTS_PATH = STATE_DIR / "seen_posts.json"
 GROUP_STATUS_PATH = STATE_DIR / "group_status.json"
 RUN_LOG_PATH = STATE_DIR / "run_log.csv"
 DRAFT_QUEUE_PATH = STATE_DIR / "draft_queue.csv"
+POST_QUEUE_PATH = STATE_DIR / "post_queue.csv"
 
 GROUP_STATUSES = {
     "ok",
@@ -64,6 +65,7 @@ GROUP_STATUSES = {
     "not_commentable",
     "no_matches",
     "drafted",
+    "post_drafted",
     "posted",
     "error",
 }
@@ -150,6 +152,13 @@ STRONG_SIGNALS = [
 
 RELEVANCE_THRESHOLD = 2
 
+DEFAULT_GEODO_POST_TEXT = (
+    "Quick question for B2B founders and sales teams: where does your GTM process usually get messy?\n\n"
+    "For a lot of teams I talk to, it is not just finding leads. It is keeping lead context, outreach, "
+    "follow-up, qualification, and pipeline movement connected once people start replying.\n\n"
+    "That is the workflow we are building Geodo around. Curious if others are feeling that same gap."
+)
+
 
 @dataclass
 class CandidatePost:
@@ -196,7 +205,8 @@ def setup_driver() -> webdriver.Chrome:
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--start-maximized")
     options.add_experimental_option("detach", True)
-    user_data_dir = Path.cwd() / "chrome_data"
+    configured_profile_dir = os.getenv("GEODO_CHROME_PROFILE_DIR")
+    user_data_dir = Path(configured_profile_dir).expanduser() if configured_profile_dir else Path.cwd() / "chrome_data"
     options.add_argument(f"--user-data-dir={user_data_dir}")
     service = Service(ChromeDriverManager().install())
     try:
@@ -266,6 +276,16 @@ def ensure_state_files(reset_state: bool = False) -> Tuple[Dict, Dict]:
             "status",
             "score",
             "matches",
+        ],
+    )
+    ensure_csv(
+        POST_QUEUE_PATH,
+        [
+            "timestamp",
+            "group_url",
+            "post_text",
+            "status",
+            "reason",
         ],
     )
 
@@ -396,6 +416,20 @@ def log_draft(candidate: CandidatePost, group_url: str, draft: str, status: str)
             "status": status,
             "score": candidate.score,
             "matches": ", ".join(candidate.matches),
+        },
+    )
+
+
+def log_created_post(group_url: str, post_text: str, status: str, reason: str = "") -> None:
+    append_csv(
+        POST_QUEUE_PATH,
+        ["timestamp", "group_url", "post_text", "status", "reason"],
+        {
+            "timestamp": now_iso(),
+            "group_url": group_url,
+            "post_text": post_text,
+            "status": status,
+            "reason": reason,
         },
     )
 
@@ -1141,6 +1175,224 @@ def submit_comment(driver: webdriver.Chrome, box: WebElement, draft: str) -> boo
         return False
 
 
+def clickable_self_or_parent(driver: webdriver.Chrome, element: WebElement) -> WebElement:
+    try:
+        clickable = driver.execute_script(
+            "return arguments[0].closest('[role=\"button\"], [aria-label], a') || arguments[0];",
+            element,
+        )
+        return clickable or element
+    except Exception:
+        return element
+
+
+def open_group_post_composer(driver: webdriver.Chrome) -> Optional[WebElement]:
+    trigger_xpaths = [
+        "//*[contains(normalize-space(.), 'Write something')]",
+        "//*[contains(normalize-space(.), \"What's on your mind\")]",
+        "//*[contains(normalize-space(.), 'Create a public post')]",
+        "//*[contains(normalize-space(.), 'Start a discussion')]",
+        "//*[contains(normalize-space(.), 'Say something')]",
+    ]
+    for xpath in trigger_xpaths:
+        for element in driver.find_elements(By.XPATH, xpath)[:12]:
+            try:
+                if not element.is_displayed():
+                    continue
+                trigger = clickable_self_or_parent(driver, element)
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", trigger)
+                time.sleep(0.5)
+                trigger.click()
+                time.sleep(2)
+                box = find_group_post_box(driver)
+                if box:
+                    return box
+            except Exception:
+                continue
+    return find_group_post_box(driver)
+
+
+def find_group_post_box(driver: webdriver.Chrome) -> Optional[WebElement]:
+    roots: List[WebElement] = []
+    try:
+        roots.extend([dialog for dialog in driver.find_elements(By.CSS_SELECTOR, "div[role='dialog']") if dialog.is_displayed()])
+    except Exception:
+        pass
+    roots.append(driver)
+
+    selectors = [
+        'div[role="textbox"][contenteditable="true"]',
+        'div[contenteditable="true"][data-lexical-editor="true"]',
+        'div[contenteditable="true"][aria-label*="Write" i]',
+        'div[contenteditable="true"][aria-label*="mind" i]',
+        'div[contenteditable="true"][aria-placeholder*="Write" i]',
+        'div[contenteditable="true"][aria-placeholder*="mind" i]',
+    ]
+    for root in roots:
+        for selector in selectors:
+            try:
+                boxes = root.find_elements(By.CSS_SELECTOR, selector)
+            except Exception:
+                continue
+            for box in boxes:
+                try:
+                    if box.is_displayed():
+                        return box
+                except Exception:
+                    continue
+    return None
+
+
+def paste_post_text(driver: webdriver.Chrome, box: WebElement, post_text: str) -> bool:
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", box)
+    time.sleep(0.5)
+    box.click()
+    time.sleep(0.5)
+    subprocess.run(["pbcopy"], input=post_text, text=True, check=True)
+    ActionChains(driver).key_down(Keys.COMMAND).send_keys("v").key_up(Keys.COMMAND).perform()
+    time.sleep(1)
+    typed_text = comment_box_text(driver, box)
+    return normalize_text(post_text[:40])[:16] in normalize_text(typed_text)
+
+
+def submit_group_post(driver: webdriver.Chrome) -> bool:
+    try:
+        dialogs = [dialog for dialog in driver.find_elements(By.CSS_SELECTOR, "div[role='dialog']") if dialog.is_displayed()]
+    except Exception:
+        dialogs = []
+    scopes = dialogs or [driver]
+    buttons: List[WebElement] = []
+    for scope in scopes:
+        try:
+            buttons.extend(scope.find_elements(By.XPATH, ".//*[@role='button']"))
+        except Exception:
+            continue
+
+    scored = []
+    for button in buttons:
+        try:
+            if not button.is_displayed() or not button.is_enabled():
+                continue
+            label = normalize_text(
+                " ".join(
+                    [
+                        button.get_attribute("aria-label") or "",
+                        button.get_attribute("title") or "",
+                        button.text or "",
+                    ]
+                )
+            )
+            if not any(term in label for term in ["post", "publish", "share"]):
+                continue
+            if any(term in label for term in ["add to your post", "photo", "poll", "anonymous", "background", "schedule", "feeling", "check in"]):
+                continue
+            aria_disabled = (button.get_attribute("aria-disabled") or "").lower()
+            if aria_disabled == "true" or button.get_attribute("disabled"):
+                continue
+            score = 0 if "post" in label else 10
+            scored.append((score, button, label or "post button"))
+        except Exception:
+            continue
+
+    scored.sort(key=lambda item: item[0])
+    for _, button, label in scored[:5]:
+        print(f"Trying group post submit control: {label}")
+        if click_or_js_click(driver, button):
+            deadline = time.time() + 8
+            while time.time() < deadline:
+                try:
+                    if not any(dialog.is_displayed() for dialog in dialogs):
+                        return True
+                except Exception:
+                    return True
+                time.sleep(0.5)
+            return True
+    return False
+
+
+def load_standalone_post_text(args) -> str:
+    if args.post_file:
+        text = Path(args.post_file).read_text(encoding="utf-8").strip()
+    elif args.post_text:
+        text = args.post_text.strip()
+    else:
+        text = DEFAULT_GEODO_POST_TEXT
+    if not text:
+        raise SystemExit("Post text is empty. Pass --post-text, --post-file, or use the default Geodo post.")
+    return text
+
+
+def create_post_in_group(
+    driver: webdriver.Chrome,
+    scanner_tab: str,
+    group_url: str,
+    group_index: int,
+    group_count: int,
+    post_text: str,
+    group_status: Dict,
+    args,
+) -> bool:
+    print(f"\nOpening group for standalone post {group_index}/{group_count}: {group_url}")
+    driver.switch_to.window(scanner_tab)
+    driver.switch_to.new_window("tab")
+    post_tab = driver.current_window_handle
+    try:
+        driver.get(group_url)
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        time.sleep(random.uniform(args.group_load_min, args.group_load_max))
+
+        status, reason = initial_group_status(driver, args)
+        print(f"Group status: {status}{f' - {reason}' if reason else ''}")
+        if status != "ok":
+            update_group_status(group_status, group_url, status, reason)
+            log_created_post(group_url, post_text, status, reason)
+            return False
+
+        box = open_group_post_composer(driver)
+        print(f"Group post composer found: {'yes' if box else 'no'}")
+        if not box:
+            update_group_status(group_status, group_url, "not_commentable", "No group post composer found.")
+            log_created_post(group_url, post_text, "not_commentable", "No group post composer found.")
+            return False
+
+        if not paste_post_text(driver, box, post_text):
+            update_group_status(group_status, group_url, "error", "Could not paste standalone post text.")
+            log_created_post(group_url, post_text, "error", "Paste did not appear in composer.")
+            return False
+
+        if not args.auto_submit:
+            update_group_status(group_status, group_url, "post_drafted", "Standalone post typed and left for review.")
+            log_created_post(group_url, post_text, "post_drafted", "Typed and left for review.")
+            log_run(group_url, "", "post_drafted", "Standalone post typed and left for review.")
+            print("Standalone post typed. Leaving this tab open for review.")
+            return True
+
+        print("Standalone post typed. Auto-submit enabled, publishing now.")
+        if submit_group_post(driver):
+            update_group_status(group_status, group_url, "posted", "Standalone group post published.")
+            log_created_post(group_url, post_text, "posted", "Published successfully.")
+            log_run(group_url, "", "posted", "Standalone group post published.")
+            print("Standalone post published. Leaving this tab open for review.")
+            return True
+
+        update_group_status(group_status, group_url, "post_drafted", "Publish click failed; draft left open.")
+        log_created_post(group_url, post_text, "post_drafted", "Publish click failed; draft left open.")
+        log_run(group_url, "", "post_drafted", "Publish click failed; draft left open.")
+        print("Could not confirm publish. Leaving the typed post open for manual review.")
+        return True
+    except Exception as exc:
+        print(f"Standalone post failed: {exc}")
+        update_group_status(group_status, group_url, "error", str(exc))
+        log_created_post(group_url, post_text, "error", str(exc))
+        log_run(group_url, "", "error", str(exc))
+        return False
+    finally:
+        try:
+            driver.switch_to.window(post_tab)
+        except Exception:
+            pass
+
+
 def type_draft_in_review_tab(
     driver: webdriver.Chrome,
     candidate: CandidatePost,
@@ -1411,9 +1663,104 @@ def apply_fast_test(args) -> None:
     args.empty_scroll_limit = max(args.empty_scroll_limit, 15)
 
 
+def run_create_posts(args) -> None:
+    load_dotenv()
+    apply_fast_test(args)
+
+    if args.reset_state:
+        ensure_state_files(reset_state=True)
+        print("Reset state/seen_posts.json and state/group_status.json.")
+        return
+
+    group_urls = load_group_urls(args.groups)
+    _, group_status = ensure_state_files(reset_state=False)
+    post_text = load_standalone_post_text(args)
+
+    if args.shuffle_groups:
+        random.shuffle(group_urls)
+    if args.max_groups_per_run > 0:
+        group_urls = group_urls[: args.max_groups_per_run]
+    if not group_urls:
+        raise SystemExit(f"No group URLs found in {args.groups}")
+
+    driver = setup_driver()
+    open_post_tabs: List[str] = []
+    total_posts = 0
+
+    print("\nReliable Geodo Facebook standalone post assistant starting.")
+    if args.auto_submit:
+        print("AUTO-SUBMIT mode is on. It will publish standalone group posts.")
+    else:
+        print("Draft-only post mode is on. It will type standalone group posts but not publish them.")
+    print("Make sure Chrome is logged into Facebook before posting begins.\n")
+    print("Post text preview:")
+    print(post_text[:500] + ("..." if len(post_text) > 500 else ""))
+
+    try:
+        scanner_tab = driver.current_window_handle
+        visited_this_run = set()
+
+        for index, group_url in enumerate(group_urls, start=1):
+            if total_posts >= args.max_posts:
+                print(f"Reached --max-posts ({args.max_posts}).")
+                return
+            if len(open_post_tabs) >= args.max_open_draft_tabs:
+                print(f"Reached --max-open-draft-tabs ({args.max_open_draft_tabs}).")
+                return
+            if group_url in visited_this_run and not args.repeat:
+                print(f"Skipping duplicate group in this run: {group_url}")
+                continue
+            visited_this_run.add(group_url)
+
+            skip, skip_reason = should_skip_group(group_status, group_url, args)
+            if skip:
+                print(f"\nOpening group {index}/{len(group_urls)}: {group_url}")
+                print(f"Group status: skipped - {skip_reason}")
+                log_created_post(group_url, post_text, "skipped", skip_reason)
+                continue
+
+            created = create_post_in_group(
+                driver,
+                scanner_tab,
+                group_url,
+                index,
+                len(group_urls),
+                post_text,
+                group_status,
+                args,
+            )
+
+            if created:
+                open_post_tabs.append(driver.current_window_handle)
+                total_posts += 1
+                driver.switch_to.window(scanner_tab)
+                if total_posts < args.max_posts:
+                    cooldown = random.uniform(args.cooldown_min, args.cooldown_max)
+                    print(f"Cooldown: waiting {round(cooldown)} seconds before the next group.")
+                    time.sleep(cooldown)
+            elif args.close_skipped_tabs:
+                close_current_tab_and_return(driver, scanner_tab)
+            else:
+                driver.switch_to.window(scanner_tab)
+
+        label = "posts published" if args.auto_submit else "post drafts created"
+        print(f"\nFinished one pass through group list. {label.title()}: {total_posts}.")
+    except KeyboardInterrupt:
+        print("\nStopped by Control+C. Open post tabs remain available for review.")
+    finally:
+        if args.close_when_done:
+            driver.quit()
+        else:
+            print("Chrome remains open for review.")
+
+
 def run(args) -> None:
     load_dotenv()
     apply_fast_test(args)
+
+    if args.create_post:
+        run_create_posts(args)
+        return
 
     if args.reset_state:
         ensure_state_files(reset_state=True)
@@ -1538,6 +1885,10 @@ def parse_args():
     parser.add_argument("--no-shuffle-groups", dest="shuffle_groups", action="store_false")
     parser.add_argument("--approve-before-send", action="store_true")
     parser.add_argument("--auto-submit", action="store_true")
+    parser.add_argument("--create-post", action="store_true")
+    parser.add_argument("--post-text", default="")
+    parser.add_argument("--post-file", default="")
+    parser.add_argument("--max-posts", type=int, default=1)
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
     parser.add_argument("--close-skipped-tabs", dest="close_skipped_tabs", action="store_true", default=True)
     parser.add_argument("--no-close-skipped-tabs", dest="close_skipped_tabs", action="store_false")

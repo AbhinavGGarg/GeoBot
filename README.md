@@ -1,10 +1,10 @@
 # Geodo Facebook Draft Assistant
 
-This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery, contextual comment drafting, and optional auto-submit demos.
+This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery, contextual comment drafting/commenting, and standalone group posting demos.
 
 Important: draft-only is the default. In default mode, the runner does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
 
-Optional full-auto mode: pass `--auto-submit` when you explicitly want the runner to submit drafted comments. In that mode, it types the comment, clicks the nearby Facebook comment send/post control, leaves the posted tab open for later review, waits for the configured cooldown, and continues scanning.
+Optional full-auto mode: pass `--auto-submit` when you explicitly want the runner to submit drafted comments or standalone group posts. In that mode, it types the content, clicks the nearby Facebook send/post control, leaves the posted tab open for later review, waits for the configured cooldown, and continues.
 
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
@@ -54,6 +54,18 @@ Full-auto demo run:
 python reliable_runner.py --groups group_urls.csv --keywords keywords.txt --max-drafts 5 --auto-submit --debug
 ```
 
+Standalone group post demo:
+
+```bash
+python reliable_runner.py --create-post --auto-submit --max-posts 1 --debug
+```
+
+Standalone group post with custom text:
+
+```bash
+python reliable_runner.py --create-post --auto-submit --max-posts 1 --post-text "Quick question for B2B founders: where does your lead follow-up usually break down? Geodo is built around keeping lead gen, outreach, follow-up, and pipeline context connected once people start replying."
+```
+
 Fast test run with short waits:
 
 ```bash
@@ -68,7 +80,9 @@ Demo mode with no OpenAI key:
 OPENAI_API_KEY= python reliable_runner.py --fast-test --max-drafts 1
 ```
 
-Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and leaves a review tab open after a draft was successfully typed in draft-only mode. In `--auto-submit` mode, it also leaves posted tabs open so you can review what was sent later.
+Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and leaves a review tab open after a draft was successfully typed in draft-only mode. In `--auto-submit` mode, it also leaves posted/commented tabs open so you can review what was sent later.
+
+To reuse an existing logged-in Chrome profile from another local checkout, set `GEODO_CHROME_PROFILE_DIR` before running.
 
 For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft or posted comment per group, leaves that tab open, then moves on. It also checks recent entries in `state/draft_queue.csv` so it avoids reusing the exact same comment text.
 
@@ -82,6 +96,7 @@ The runner creates and maintains:
 - `state/group_status.json`: last checked timestamp and status per group.
 - `state/run_log.csv`: group-level and post-level scan events.
 - `state/draft_queue.csv`: drafts that were typed, skipped by the generator, or auto-posted.
+- `state/post_queue.csv`: standalone group posts that were drafted or published.
 
 Group statuses are:
 
@@ -91,6 +106,7 @@ Group statuses are:
 - `not_commentable`
 - `no_matches`
 - `drafted`
+- `post_drafted`
 - `posted`
 - `error`
 
@@ -121,5 +137,7 @@ python reliable_runner.py \
 ```
 
 Add `--auto-submit` only when you want full-auto posting. Without it, the tool stays in draft-only review mode.
+
+Use `--create-post` for standalone Facebook group posts. If you omit `--post-text` and `--post-file`, the runner uses the built-in Geodo post text. Without `--auto-submit`, it types the post and leaves it open for review.
 
 Use `--no-close-skipped-tabs` only when debugging failed review tabs. The default is to close tabs where a draft was not typed.
