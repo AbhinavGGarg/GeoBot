@@ -200,7 +200,7 @@ def page() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GeoBot Control Center</title>
+  <title>GeodoBot Control Center</title>
   <style>
     :root {
       color-scheme: dark;
@@ -325,7 +325,7 @@ def page() -> str:
 <body>
   <header>
     <div>
-      <h1>GeoBot Control Center</h1>
+      <h1>GeodoBot Control Center</h1>
       <div class="sub">Run Facebook commenting and standalone group posting from one local dashboard.</div>
     </div>
     <div id="status" class="status"><span class="dot"></span><span>Idle</span></div>
@@ -375,8 +375,9 @@ def page() -> str:
         <input id="profile_dir" name="profile_dir" value="/Users/abhinavgarg/Documents/New project/Geodo-Bot/chrome_data">
         <div class="hint">Leave this as-is to reuse the profile you already logged into during testing.</div>
 
-        <label for="post_text">Standalone post text</label>
+        <label for="post_text">Standalone group post text</label>
         <textarea id="post_text" name="post_text">Quick question for B2B founders: where does your lead follow-up usually break down? Geodo is built around keeping lead gen, outreach, follow-up, and pipeline context connected once people start replying.</textarea>
+        <div class="hint">Only used by the two standalone post workflows. Comment workflows ignore this box because they generate comments from the post they find.</div>
 
         <label class="check"><input type="checkbox" name="repeat"> Ignore recent group cooldown for this run</label>
         <label class="check"><input type="checkbox" name="background_chrome"> Keep Chrome off to the side when possible</label>
