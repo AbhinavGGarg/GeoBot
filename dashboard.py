@@ -123,7 +123,7 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     mode = form.get("mode", ["comment_auto"])[0]
     max_items = int_from_form(form, "max_items", 3, 1, 50)
     cooldown_min = 120.0
-    cooldown_max = 120.0
+    cooldown_max = float_from_form(form, "cooldown_max", 180, cooldown_min, 3600)
     max_tabs = int_from_form(form, "max_tabs", 5, 1, 30)
     group_limit = int_from_form(form, "max_groups", 0, 0, 500)
     post_text = (form.get("post_text", [""])[0] or "").strip()
@@ -299,11 +299,11 @@ def page() -> str:
 
         <div class="grid">
           <div>
-            <label for="max_items">Max comments/posts</label>
+            <label for="max_items">Comments/posts</label>
             <input id="max_items" name="max_items" type="number" min="1" max="50" value="3">
           </div>
           <div>
-            <label for="max_tabs">Max open tabs</label>
+            <label for="max_tabs">Open tabs</label>
             <input id="max_tabs" name="max_tabs" type="number" min="1" max="30" value="5">
           </div>
         </div>
@@ -316,12 +316,11 @@ def page() -> str:
           </div>
           <div>
             <label>Cooldown max sec</label>
-            <input name="cooldown_max" type="hidden" value="120">
-            <input type="text" value="120" disabled>
+            <input id="cooldown_max" name="cooldown_max" type="number" min="120" value="180">
           </div>
         </div>
 
-        <label for="max_groups">Max groups to scan (0 = all)</label>
+        <label for="max_groups">Groups to scan (0 = all)</label>
         <input id="max_groups" name="max_groups" type="number" min="0" max="500" value="0">
 
         <label for="profile_dir">Chrome profile directory</label>
