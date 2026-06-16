@@ -121,7 +121,7 @@ def checkbox(form: Dict[str, List[str]], name: str) -> bool:
 
 def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str, str]]:
     mode = form.get("mode", ["comment_auto"])[0]
-    max_items = 1
+    max_items = int_from_form(form, "max_items", 3, 1, 50)
     cooldown_min = 120.0
     cooldown_max = 120.0
     max_tabs = int_from_form(form, "max_tabs", 5, 1, 30)
@@ -299,10 +299,9 @@ def page() -> str:
 
         <div class="grid">
           <div>
-            <label>Actions per run</label>
-            <input name="max_items" type="hidden" value="1">
-            <input type="text" value="1" disabled>
-            <div class="hint">Locked: one action on one post/group per run.</div>
+            <label for="max_items">Max different posts/groups this run</label>
+            <input id="max_items" name="max_items" type="number" min="1" max="50" value="3">
+            <div class="hint">Each post still gets at most one action.</div>
           </div>
           <div>
             <label for="max_tabs">Max open tabs</label>
