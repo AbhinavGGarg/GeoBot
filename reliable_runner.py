@@ -3,22 +3,17 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import html
 import json
 import os
 import random
 import re
 import subprocess
-import threading
 import time
-import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
-from urllib.parse import parse_qs, urlsplit, urlunsplit
-import secrets
+from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
@@ -61,7 +56,6 @@ SEEN_POSTS_PATH = STATE_DIR / "seen_posts.json"
 GROUP_STATUS_PATH = STATE_DIR / "group_status.json"
 RUN_LOG_PATH = STATE_DIR / "run_log.csv"
 DRAFT_QUEUE_PATH = STATE_DIR / "draft_queue.csv"
-APPROVAL_URL_PATH = STATE_DIR / "approval_url.txt"
 
 GROUP_STATUSES = {
     "ok",
@@ -164,249 +158,6 @@ class CandidatePost:
     fingerprint: str
     score: int
     matches: List[str]
-
-
-class LocalApprovalServer:
-    def __init__(self, host: str, port: int):
-        self.host = host
-        self.port = port
-        self.token = secrets.token_urlsafe(18)
-        self.pending: Optional[Dict] = None
-        self.decision: Optional[str] = None
-        self.condition = threading.Condition()
-        self.httpd: Optional[ThreadingHTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
-
-    @property
-    def url(self) -> str:
-        return f"http://{self.host}:{self.port}/?token={self.token}"
-
-    def start(self) -> None:
-        owner = self
-
-        class ApprovalHandler(BaseHTTPRequestHandler):
-            def log_message(self, format, *args):
-                return
-
-            def _authorized(self) -> bool:
-                parsed = urlsplit(self.path)
-                token = parse_qs(parsed.query).get("token", [""])[0]
-                return token == owner.token
-
-            def _send(self, status: int, body: str, content_type: str = "text/html") -> None:
-                encoded = body.encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-                self.send_header("Content-Length", str(len(encoded)))
-                self.end_headers()
-                self.wfile.write(encoded)
-
-            def do_GET(self):
-                if not self._authorized():
-                    self._send(403, "Forbidden", "text/plain")
-                    return
-                self._send(200, owner.render_page())
-
-            def do_POST(self):
-                if not self._authorized():
-                    self._send(403, "Forbidden", "text/plain")
-                    return
-                length = int(self.headers.get("Content-Length", "0") or "0")
-                body = self.rfile.read(length).decode("utf-8")
-                action = parse_qs(body).get("action", [""])[0]
-                if action not in {"approve", "skip"}:
-                    self._send(400, "Bad request", "text/plain")
-                    return
-                owner.set_decision(action)
-                self._send(200, owner.render_page(message="Decision saved. You can return to Facebook."))
-
-        self.httpd = ThreadingHTTPServer((self.host, self.port), ApprovalHandler)
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-        self.thread.start()
-
-    def stop(self) -> None:
-        if self.httpd:
-            self.httpd.shutdown()
-            self.httpd.server_close()
-
-    def set_pending(self, payload: Dict) -> None:
-        with self.condition:
-            self.pending = payload
-            self.decision = None
-            self.condition.notify_all()
-
-    def set_decision(self, decision: str) -> None:
-        with self.condition:
-            self.decision = decision
-            self.condition.notify_all()
-
-    def wait_for_decision(self) -> str:
-        with self.condition:
-            while self.decision is None:
-                self.condition.wait(timeout=1)
-            decision = self.decision
-            self.pending = None
-            self.decision = None
-            return decision
-
-    def request_approval(self, payload: Dict) -> bool:
-        self.set_pending(payload)
-        print("\nApproval needed in browser.")
-        print(f"Open or refresh: {self.url}")
-        decision = self.wait_for_decision()
-        return decision == "approve"
-
-    def render_page(self, message: str = "") -> str:
-        pending = self.pending or {}
-        if not pending:
-            content = """
-                <section class="empty">
-                  <h1>No pending draft</h1>
-                  <p>The runner is still scanning. Keep this page open; refresh when Terminal says approval is needed.</p>
-                </section>
-            """
-        else:
-            signals = ", ".join(pending.get("matches", [])[:12]) or "none"
-            content = f"""
-                <section>
-                  <div class="meta">
-                    <div><span>Group</span><a href="{html.escape(pending.get('group_url', ''))}" target="_blank">{html.escape(pending.get('group_url', ''))}</a></div>
-                    <div><span>Post</span><a href="{html.escape(pending.get('post_url', ''))}" target="_blank">{html.escape(pending.get('post_url', ''))}</a></div>
-                    <div><span>Score</span>{html.escape(str(pending.get('score', '')))}</div>
-                    <div><span>Signals</span>{html.escape(signals)}</div>
-                  </div>
-                  <h2>Post snippet</h2>
-                  <pre>{html.escape(pending.get('snippet', ''))}</pre>
-                  <h2>Draft to review</h2>
-                  <pre class="draft">{html.escape(pending.get('draft', ''))}</pre>
-                  <form method="post" action="/decision?token={self.token}">
-                    <button class="approve" name="action" value="approve">Approve Send</button>
-                    <button class="skip" name="action" value="skip">Leave As Draft</button>
-                  </form>
-                </section>
-            """
-
-        return f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Geodo Draft Approval</title>
-  <style>
-    body {{
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f7fb;
-      color: #18212f;
-    }}
-    main {{
-      max-width: 920px;
-      margin: 32px auto;
-      padding: 0 20px;
-    }}
-    header {{
-      margin-bottom: 18px;
-    }}
-    h1 {{
-      margin: 0 0 6px;
-      font-size: 28px;
-    }}
-    p {{
-      color: #526071;
-      line-height: 1.5;
-    }}
-    section {{
-      background: white;
-      border: 1px solid #dce3ef;
-      border-radius: 8px;
-      padding: 22px;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-    }}
-    .notice {{
-      margin: 0 0 16px;
-      padding: 12px 14px;
-      border-radius: 6px;
-      background: #ecfdf3;
-      color: #17613a;
-      border: 1px solid #bbf7d0;
-    }}
-    .meta {{
-      display: grid;
-      gap: 10px;
-      margin-bottom: 22px;
-    }}
-    .meta div {{
-      display: grid;
-      grid-template-columns: 90px 1fr;
-      gap: 12px;
-      align-items: baseline;
-    }}
-    .meta span {{
-      color: #667085;
-      font-weight: 600;
-    }}
-    a {{
-      color: #2457c5;
-      overflow-wrap: anywhere;
-    }}
-    h2 {{
-      margin: 20px 0 8px;
-      font-size: 16px;
-    }}
-    pre {{
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 14px;
-      line-height: 1.45;
-      font-family: inherit;
-      font-size: 15px;
-    }}
-    .draft {{
-      background: #fffdf4;
-      border-color: #fde68a;
-      font-size: 17px;
-    }}
-    form {{
-      display: flex;
-      gap: 12px;
-      margin-top: 18px;
-    }}
-    button {{
-      border: 0;
-      border-radius: 6px;
-      padding: 12px 16px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-    }}
-    .approve {{
-      background: #17613a;
-      color: white;
-    }}
-    .skip {{
-      background: #e5e7eb;
-      color: #111827;
-    }}
-    .empty {{
-      text-align: center;
-      padding: 48px 22px;
-    }}
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <h1>Geodo Draft Approval</h1>
-      <p>Review the exact draft typed into Facebook. Approve only when it is ready to send.</p>
-    </header>
-    {f'<div class="notice">{html.escape(message)}</div>' if message else ''}
-    {content}
-  </main>
-</body>
-</html>"""
 
 
 def now_iso() -> str:
@@ -1201,179 +952,6 @@ def paste_draft(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
     return normalize_text(draft[:30])[:12] in normalize_text(typed_text)
 
 
-def comment_box_text(driver: webdriver.Chrome, box: WebElement) -> str:
-    try:
-        return (box.text or box.get_attribute("innerText") or "").strip()
-    except Exception:
-        try:
-            active = driver.switch_to.active_element
-            return (active.text or active.get_attribute("innerText") or "").strip()
-        except Exception:
-            return ""
-
-
-def draft_still_present(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
-    needle = normalize_text(draft[:40])[:16]
-    deadline = time.time() + 4
-    while time.time() < deadline:
-        current = normalize_text(comment_box_text(driver, box))
-        if not current or needle not in current:
-            return False
-        time.sleep(0.5)
-    return True
-
-
-def click_or_js_click(driver: webdriver.Chrome, element: WebElement) -> bool:
-    try:
-        element.click()
-        return True
-    except Exception:
-        try:
-            driver.execute_script("arguments[0].click();", element)
-            return True
-        except Exception:
-            return False
-
-
-def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", box)
-    time.sleep(0.4)
-    try:
-        box.click()
-    except Exception:
-        pass
-
-    scopes = [driver]
-    try:
-        container = driver.execute_script(
-            "return arguments[0].closest('[role=\"dialog\"], [role=\"article\"], form') || document.body;",
-            box,
-        )
-        if container:
-            scopes.insert(0, container)
-    except Exception:
-        pass
-
-    candidates = []
-    for scope in scopes:
-        try:
-            candidates.extend(scope.find_elements(By.XPATH, ".//*[@role='button']"))
-        except Exception:
-            continue
-
-    scored = []
-    box_rect = driver.execute_script(
-        "const r = arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};",
-        box,
-    )
-    box_center_x = box_rect["x"] + box_rect["w"] / 2
-    box_center_y = box_rect["y"] + box_rect["h"] / 2
-    seen_ids = set()
-
-    for candidate in candidates:
-        try:
-            internal_id = candidate.id
-            if internal_id in seen_ids:
-                continue
-            seen_ids.add(internal_id)
-            if not candidate.is_displayed():
-                continue
-            label = normalize_text(
-                " ".join([
-                    candidate.get_attribute("aria-label") or "",
-                    candidate.get_attribute("title") or "",
-                    candidate.text or "",
-                ])
-            )
-            excluded = ["emoji", "gif", "sticker", "photo", "camera", "avatar", "account", "insert", "attach"]
-            if any(term in label for term in excluded):
-                continue
-            aria_disabled = (candidate.get_attribute("aria-disabled") or "").lower()
-            disabled = candidate.get_attribute("disabled")
-            if aria_disabled == "true" or disabled:
-                continue
-            rect = driver.execute_script(
-                "const r = arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};",
-                candidate,
-            )
-            center_x = rect["x"] + rect["w"] / 2
-            center_y = rect["y"] + rect["h"] / 2
-            if center_y < box_rect["y"] - 30 or center_y > box_rect["y"] + box_rect["h"] + 90:
-                continue
-            if center_x < box_rect["x"] + box_rect["w"] * 0.55:
-                continue
-            label_bonus = -1000 if any(term in label for term in ["comment", "send", "post", "reply"]) else 0
-            distance = abs(center_x - box_center_x) + abs(center_y - box_center_y)
-            scored.append((label_bonus + distance, candidate, label or "unlabeled button"))
-        except Exception:
-            continue
-
-    if scored:
-        scored.sort(key=lambda item: item[0])
-        for _, candidate, label in scored[:5]:
-            print(f"Trying approved send button: {label}")
-            if click_or_js_click(driver, candidate):
-                if not draft_still_present(driver, box, draft):
-                    return True
-                print("Send button click did not clear the draft; trying another candidate.")
-
-    try:
-        box.click()
-        ActionChains(driver).send_keys(Keys.ENTER).perform()
-        return not draft_still_present(driver, box, draft)
-    except Exception:
-        return False
-
-
-def wait_with_countdown(seconds: float, label: str) -> None:
-    seconds = max(0, int(round(seconds)))
-    if seconds <= 0:
-        return
-    print(f"{label}: waiting {seconds} seconds.")
-    while seconds > 0:
-        step = min(30, seconds)
-        time.sleep(step)
-        seconds -= step
-        if seconds:
-            print(f"{label}: {seconds} seconds remaining...")
-
-
-def ask_send_approval(
-    draft: str,
-    group_url: str,
-    candidate: CandidatePost,
-    args,
-) -> bool:
-    snippet = candidate.text.replace("\n", " ")[:500]
-    approval_server = getattr(args, "approval_server", None)
-    if approval_server:
-        return approval_server.request_approval({
-            "draft": draft,
-            "group_url": group_url,
-            "post_url": candidate.post_url,
-            "score": candidate.score,
-            "matches": candidate.matches,
-            "snippet": snippet,
-        })
-
-    print("\n" + "=" * 72)
-    print("APPROVAL NEEDED: drafted Facebook comment")
-    print("=" * 72)
-    print(f"Group: {group_url}")
-    print(f"Post:  {candidate.post_url}")
-    print(f"Score: {candidate.score}")
-    print(f"Signals: {', '.join(candidate.matches[:12]) or 'none'}")
-    print("-" * 72)
-    print("Post snippet:")
-    print(snippet)
-    print("-" * 72)
-    print("Draft to send:")
-    print(draft)
-    print("=" * 72)
-    answer = input("Type SEND to publish this exact draft, or press Enter to leave it open: ")
-    return answer.strip().upper() == "SEND"
-
-
 def type_draft_in_review_tab(
     driver: webdriver.Chrome,
     candidate: CandidatePost,
@@ -1462,38 +1040,7 @@ def type_draft_in_review_tab(
         log_draft(candidate, group_url, draft, "typed_left_for_review")
         log_run(group_url, candidate.post_url, "drafted", "Draft typed successfully.", candidate.score, candidate.matches)
 
-        if args.approve_before_send:
-            if ask_send_approval(draft, group_url, candidate, args):
-                if click_approved_comment_send(driver, box, draft):
-                    args.last_action_was_sent = True
-                    mark_seen(
-                        seen_posts,
-                        candidate.fingerprint,
-                        group_url,
-                        candidate.post_url,
-                        "sent_after_approval",
-                        "Draft sent after explicit terminal approval.",
-                        candidate.score,
-                        candidate.matches,
-                    )
-                    log_draft(candidate, group_url, draft, "sent_after_terminal_approval")
-                    log_run(
-                        group_url,
-                        candidate.post_url,
-                        "sent_after_approval",
-                        "Sent after explicit terminal approval.",
-                        candidate.score,
-                        candidate.matches,
-                    )
-                    print("Approved draft sent. Moving to next group.")
-                    cooldown = random.uniform(args.approved_send_cooldown_min, args.approved_send_cooldown_max)
-                    wait_with_countdown(cooldown, "Approved-send cooldown")
-                    return True
-                print("Approval was given, but send click failed. Leaving draft open for manual review.")
-            else:
-                print("No approval entered. Leaving draft open for manual review.")
-
-        print("Draft typed successfully. Leaving this tab open for review.")
+        print("Draft typed successfully. Leaving this tab open for review and continuing.")
         return True
     except Exception as exc:
         print(f"Skipped reason: review tab failed: {exc}")
@@ -1672,21 +1219,11 @@ def run(args) -> None:
     open_draft_tabs: List[str] = []
     total_drafts = 0
     args.stop_requested = False
-    args.last_action_was_sent = False
-    args.approval_server = None
-    if args.approve_before_send:
-        args.approval_server = LocalApprovalServer(args.approval_host, args.approval_port)
-        args.approval_server.start()
-        STATE_DIR.mkdir(exist_ok=True)
-        APPROVAL_URL_PATH.write_text(args.approval_server.url + "\n", encoding="utf-8")
-        if args.open_approval_page:
-            webbrowser.open(args.approval_server.url)
 
     print("\nReliable Geodo Facebook draft assistant starting.")
     print("It drafts only. It will not press Enter or click the Facebook send/post button.")
-    if args.approval_server:
-        print(f"Approval page: {args.approval_server.url}")
-        print(f"Approval URL saved to: {APPROVAL_URL_PATH}")
+    if args.approve_before_send:
+        print("--approve-before-send is deprecated and ignored. Draft-only continuous mode is active.")
     print("Make sure Chrome is logged into Facebook before scanning begins.\n")
 
     try:
@@ -1712,7 +1249,6 @@ def run(args) -> None:
                 continue
 
             before = total_drafts
-            args.last_action_was_sent = False
             created = scan_group(
                 driver,
                 scanner_tab,
@@ -1731,7 +1267,7 @@ def run(args) -> None:
                 print("Stopping because the maximum number of open draft tabs is already in use.")
                 return
 
-            if created and total_drafts < args.max_drafts and not args.last_action_was_sent:
+            if created and total_drafts < args.max_drafts:
                 cooldown = random.uniform(args.cooldown_min, args.cooldown_max)
                 print(f"Cooldown: waiting {round(cooldown)} seconds before the next group.")
                 time.sleep(cooldown)
@@ -1746,8 +1282,6 @@ def run(args) -> None:
     except KeyboardInterrupt:
         print("\nStopped by Control+C. Review any open draft tabs manually.")
     finally:
-        if getattr(args, "approval_server", None):
-            args.approval_server.stop()
         if args.close_when_done:
             driver.quit()
         else:
@@ -1773,12 +1307,6 @@ def parse_args():
     parser.add_argument("--shuffle-groups", dest="shuffle_groups", action="store_true", default=True)
     parser.add_argument("--no-shuffle-groups", dest="shuffle_groups", action="store_false")
     parser.add_argument("--approve-before-send", action="store_true")
-    parser.add_argument("--approval-host", default="127.0.0.1")
-    parser.add_argument("--approval-port", type=int, default=8765)
-    parser.add_argument("--open-approval-page", dest="open_approval_page", action="store_true", default=False)
-    parser.add_argument("--no-open-approval-page", dest="open_approval_page", action="store_false")
-    parser.add_argument("--approved-send-cooldown-min", type=float, default=120)
-    parser.add_argument("--approved-send-cooldown-max", type=float, default=180)
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
     parser.add_argument("--close-skipped-tabs", dest="close_skipped_tabs", action="store_true", default=True)
     parser.add_argument("--no-close-skipped-tabs", dest="close_skipped_tabs", action="store_false")

@@ -2,11 +2,7 @@
 
 This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery and human-reviewed comment drafting.
 
-Important: by default this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button unless you run the explicit human-approved send mode. Draft tabs are left open so a human can review, edit, and decide whether to post.
-
-Optional approval mode: pass `--approve-before-send` and the runner starts a local review page at `http://127.0.0.1:8765`. The page shows the group, post, score, matched signals, post snippet, and draft. It only clicks Facebook's comment send button if a human clicks `Approve Send` for that specific draft. After an approved send, it waits 2-3 minutes by default before continuing.
-
-When approval mode starts, it prints the local approval page URL and saves the exact token URL to `state/approval_url.txt`. It does not auto-open the page unless you pass `--open-approval-page`, so the scanner can keep running without pulling focus.
+Important: this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
 
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
@@ -48,18 +44,6 @@ Normal run:
 
 ```bash
 python reliable_runner.py --groups group_urls.csv --keywords keywords.txt --max-drafts 5
-```
-
-Human-approved send mode:
-
-```bash
-python reliable_runner.py --fast-test --max-drafts 5 --debug --approve-before-send
-```
-
-Open the exact approval URL printed in Terminal. It includes a local token and looks like:
-
-```text
-http://127.0.0.1:8765/?token=...
 ```
 
 Fast test run with short waits:
@@ -122,8 +106,6 @@ python reliable_runner.py \
   --min-scrolls-per-group 15 \
   --empty-scroll-limit 15 \
   --group-revisit-hours 72 \
-  --approved-send-cooldown-min 120 \
-  --approved-send-cooldown-max 180 \
   --cooldown-min 120 \
   --cooldown-max 180 \
   --max-open-draft-tabs 5
