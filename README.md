@@ -6,7 +6,7 @@ Important: by default this tool only drafts comments. It does not auto-submit co
 
 Optional approval mode: pass `--approve-before-send` and the runner starts a local review page at `http://127.0.0.1:8765`. The page shows the group, post, score, matched signals, post snippet, and draft. It only clicks Facebook's comment send button if a human clicks `Approve Send` for that specific draft. After an approved send, it waits 2-3 minutes by default before continuing.
 
-When approval mode starts, it auto-opens the local approval page and also saves the exact token URL to `state/approval_url.txt`.
+When approval mode starts, it prints the local approval page URL and saves the exact token URL to `state/approval_url.txt`. It does not auto-open the page unless you pass `--open-approval-page`, so the scanner can keep running without pulling focus.
 
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 

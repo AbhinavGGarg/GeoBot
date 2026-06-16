@@ -1201,7 +1201,41 @@ def paste_draft(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
     return normalize_text(draft[:30])[:12] in normalize_text(typed_text)
 
 
-def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement) -> bool:
+def comment_box_text(driver: webdriver.Chrome, box: WebElement) -> str:
+    try:
+        return (box.text or box.get_attribute("innerText") or "").strip()
+    except Exception:
+        try:
+            active = driver.switch_to.active_element
+            return (active.text or active.get_attribute("innerText") or "").strip()
+        except Exception:
+            return ""
+
+
+def draft_still_present(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
+    needle = normalize_text(draft[:40])[:16]
+    deadline = time.time() + 4
+    while time.time() < deadline:
+        current = normalize_text(comment_box_text(driver, box))
+        if not current or needle not in current:
+            return False
+        time.sleep(0.5)
+    return True
+
+
+def click_or_js_click(driver: webdriver.Chrome, element: WebElement) -> bool:
+    try:
+        element.click()
+        return True
+    except Exception:
+        try:
+            driver.execute_script("arguments[0].click();", element)
+            return True
+        except Exception:
+            return False
+
+
+def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", box)
     time.sleep(0.4)
     try:
@@ -1209,14 +1243,23 @@ def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement) -> bo
     except Exception:
         pass
 
-    candidates = driver.find_elements(
-        By.XPATH,
-        "//*[@role='button' and ("
-        "contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'comment') "
-        "or contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'send') "
-        "or contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'post')"
-        ")]",
-    )
+    scopes = [driver]
+    try:
+        container = driver.execute_script(
+            "return arguments[0].closest('[role=\"dialog\"], [role=\"article\"], form') || document.body;",
+            box,
+        )
+        if container:
+            scopes.insert(0, container)
+    except Exception:
+        pass
+
+    candidates = []
+    for scope in scopes:
+        try:
+            candidates.extend(scope.find_elements(By.XPATH, ".//*[@role='button']"))
+        except Exception:
+            continue
 
     scored = []
     box_rect = driver.execute_script(
@@ -1225,10 +1268,25 @@ def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement) -> bo
     )
     box_center_x = box_rect["x"] + box_rect["w"] / 2
     box_center_y = box_rect["y"] + box_rect["h"] / 2
+    seen_ids = set()
 
     for candidate in candidates:
         try:
+            internal_id = candidate.id
+            if internal_id in seen_ids:
+                continue
+            seen_ids.add(internal_id)
             if not candidate.is_displayed():
+                continue
+            label = normalize_text(
+                " ".join([
+                    candidate.get_attribute("aria-label") or "",
+                    candidate.get_attribute("title") or "",
+                    candidate.text or "",
+                ])
+            )
+            excluded = ["emoji", "gif", "sticker", "photo", "camera", "avatar", "account", "insert", "attach"]
+            if any(term in label for term in excluded):
                 continue
             aria_disabled = (candidate.get_attribute("aria-disabled") or "").lower()
             disabled = candidate.get_attribute("disabled")
@@ -1240,26 +1298,29 @@ def click_approved_comment_send(driver: webdriver.Chrome, box: WebElement) -> bo
             )
             center_x = rect["x"] + rect["w"] / 2
             center_y = rect["y"] + rect["h"] / 2
-            if center_y < box_center_y - 80:
+            if center_y < box_rect["y"] - 30 or center_y > box_rect["y"] + box_rect["h"] + 90:
                 continue
+            if center_x < box_rect["x"] + box_rect["w"] * 0.55:
+                continue
+            label_bonus = -1000 if any(term in label for term in ["comment", "send", "post", "reply"]) else 0
             distance = abs(center_x - box_center_x) + abs(center_y - box_center_y)
-            scored.append((distance, candidate))
+            scored.append((label_bonus + distance, candidate, label or "unlabeled button"))
         except Exception:
             continue
 
     if scored:
         scored.sort(key=lambda item: item[0])
-        try:
-            scored[0][1].click()
-            time.sleep(1)
-            return True
-        except Exception:
-            pass
+        for _, candidate, label in scored[:5]:
+            print(f"Trying approved send button: {label}")
+            if click_or_js_click(driver, candidate):
+                if not draft_still_present(driver, box, draft):
+                    return True
+                print("Send button click did not clear the draft; trying another candidate.")
 
     try:
+        box.click()
         ActionChains(driver).send_keys(Keys.ENTER).perform()
-        time.sleep(1)
-        return True
+        return not draft_still_present(driver, box, draft)
     except Exception:
         return False
 
@@ -1403,7 +1464,7 @@ def type_draft_in_review_tab(
 
         if args.approve_before_send:
             if ask_send_approval(draft, group_url, candidate, args):
-                if click_approved_comment_send(driver, box):
+                if click_approved_comment_send(driver, box, draft):
                     args.last_action_was_sent = True
                     mark_seen(
                         seen_posts,
@@ -1714,7 +1775,7 @@ def parse_args():
     parser.add_argument("--approve-before-send", action="store_true")
     parser.add_argument("--approval-host", default="127.0.0.1")
     parser.add_argument("--approval-port", type=int, default=8765)
-    parser.add_argument("--open-approval-page", dest="open_approval_page", action="store_true", default=True)
+    parser.add_argument("--open-approval-page", dest="open_approval_page", action="store_true", default=False)
     parser.add_argument("--no-open-approval-page", dest="open_approval_page", action="store_false")
     parser.add_argument("--approved-send-cooldown-min", type=float, default=120)
     parser.add_argument("--approved-send-cooldown-max", type=float, default=180)
