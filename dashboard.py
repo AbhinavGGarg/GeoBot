@@ -131,6 +131,7 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     cooldown_min = 120.0
     cooldown_max = float_from_form(form, "cooldown_max", 180, cooldown_min, 3600)
     max_tabs = int_from_form(form, "max_tabs", 5, 1, 30)
+    max_post_age_days = int_from_form(form, "max_post_age_days", 30, 1, 365)
     group_limit = int_from_form(form, "max_groups", 0, 0, 500)
     post_text = (form.get("post_text", [""])[0] or "").strip()
     profile_dir = (form.get("profile_dir", [""])[0] or "").strip()
@@ -142,6 +143,7 @@ def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str,
     if mode in {"comment_auto", "comment_draft"}:
         command.extend(["--max-drafts", str(max_items)])
         command.extend(["--max-open-draft-tabs", str(max_tabs)])
+        command.extend(["--max-post-age-days", str(max_post_age_days)])
         command.append("--no-shuffle-groups")
         if mode == "comment_auto":
             command.append("--auto-submit")
@@ -180,6 +182,7 @@ def preview_payload(form: Dict[str, List[str]]) -> Dict[str, object]:
     cooldown_max = command[command.index("--cooldown-max") + 1] if "--cooldown-max" in command else ""
     run_total_flag = "--max-posts" if create_post else "--max-drafts"
     run_total = command[command.index(run_total_flag) + 1] if run_total_flag in command else ""
+    max_age = command[command.index("--max-post-age-days") + 1] if "--max-post-age-days" in command else ""
     return {
         "mode": mode,
         "label": MODE_LABELS.get(mode, mode),
@@ -190,6 +193,7 @@ def preview_payload(form: Dict[str, List[str]]) -> Dict[str, object]:
         "run_total": run_total,
         "cooldown_min": "120",
         "cooldown_max": cooldown_max,
+        "max_post_age_days": max_age,
         "background_chrome": env.get("GEODO_BACKGROUND_CHROME") == "1",
     }
 
@@ -356,6 +360,10 @@ def page() -> str:
         <label for="max_tabs">Open tabs</label>
         <input id="max_tabs" name="max_tabs" type="number" min="1" max="30" value="5">
 
+        <label for="max_post_age_days">Max post age days</label>
+        <input id="max_post_age_days" name="max_post_age_days" type="number" min="1" max="365" value="30">
+        <div class="hint">Only used by the find-post workflows. Older posts are skipped before drafting.</div>
+
         <div class="grid">
           <div>
             <label>Cooldown min sec</label>
@@ -423,6 +431,7 @@ def page() -> str:
       params.set('mode', modeSelect.value);
       params.set('max_items', document.getElementById('max_items').value || '3');
       params.set('max_tabs', document.getElementById('max_tabs').value || '5');
+      params.set('max_post_age_days', document.getElementById('max_post_age_days').value || '30');
       params.set('cooldown_max', document.getElementById('cooldown_max').value || '180');
       params.set('max_groups', document.getElementById('max_groups').value || '0');
       params.set('profile_dir', document.getElementById('profile_dir').value || '');
@@ -452,10 +461,11 @@ def page() -> str:
       }
       const action = data.auto_submit ? 'AUTO-SEND ON' : 'DRAFT ONLY';
       const type = data.create_post ? 'standalone posts' : 'comments on found posts';
+      const age = data.create_post ? '' : ` Max post age: ${escapeHTML(data.max_post_age_days)} days.`;
       const chrome = data.background_chrome ? 'Chrome side-positioning ON' : 'Chrome opens normally';
       preview.innerHTML = `<strong>${escapeHTML(data.label)} - ${action}</strong>`
         + `Run total: ${escapeHTML(data.run_total)} ${type}. Comments per post: ${escapeHTML(data.comments_per_post)}. `
-        + `Cooldown: 120-${escapeHTML(data.cooldown_max)}s. ${chrome}.<br>`
+        + `Cooldown: 120-${escapeHTML(data.cooldown_max)}s.${age} ${chrome}.<br>`
         + `<code>${escapeHTML(data.command)}</code>`;
     }
 

@@ -58,6 +58,8 @@ The dashboard lets you choose comment automation, comment drafting, standalone p
 
 The optional "Keep Chrome off to the side when possible" dashboard setting opens Selenium Chrome in an off-screen position. macOS may still briefly focus Chrome when Selenium controls it, but this reduces how much it interrupts the dashboard.
 
+The find-post workflows default to posts from the last `30` days. Posts with older visible timestamps are skipped before drafting so the bot does not reply to stale conversations.
+
 Normal run:
 
 ```bash
@@ -147,6 +149,7 @@ python reliable_runner.py \
   --max-scrolls-per-group 60 \
   --min-scrolls-per-group 15 \
   --empty-scroll-limit 15 \
+  --max-post-age-days 30 \
   --group-revisit-hours 72 \
   --cooldown-min 120 \
   --cooldown-max 180 \

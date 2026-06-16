@@ -192,6 +192,33 @@ DEFAULT_GEODO_POST_TEXT = (
     "That is the workflow we are building Geodo around. Curious if others are feeling that same gap."
 )
 
+MONTHS = {
+    "january": 1,
+    "jan": 1,
+    "february": 2,
+    "feb": 2,
+    "march": 3,
+    "mar": 3,
+    "april": 4,
+    "apr": 4,
+    "may": 5,
+    "june": 6,
+    "jun": 6,
+    "july": 7,
+    "jul": 7,
+    "august": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "october": 10,
+    "oct": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
+
 
 @dataclass
 class CandidatePost:
@@ -663,6 +690,53 @@ def is_probably_post_text(text: str) -> bool:
     return True
 
 
+def post_age_days(text: str, now: Optional[datetime] = None) -> Optional[float]:
+    now = now or datetime.now(timezone.utc)
+    lower = normalize_text(text)
+    if any(term in lower for term in ("just now", "a few seconds ago", "now")):
+        return 0.0
+    if "yesterday" in lower:
+        return 1.0
+
+    relative_match = re.search(
+        r"\b(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)\b",
+        lower,
+    )
+    if relative_match:
+        value = int(relative_match.group(1))
+        unit = relative_match.group(2)
+        if unit in {"m", "min", "mins", "minute", "minutes", "h", "hr", "hrs", "hour", "hours"}:
+            return 0.0
+        if unit in {"d", "day", "days"}:
+            return float(value)
+        if unit in {"w", "wk", "wks", "week", "weeks"}:
+            return float(value * 7)
+        if unit in {"mo", "mos", "month", "months"}:
+            return float(value * 30)
+        if unit in {"y", "yr", "yrs", "year", "years"}:
+            return float(value * 365)
+
+    absolute_match = re.search(
+        r"\b("
+        + "|".join(MONTHS.keys())
+        + r")\s+(\d{1,2})(?:,\s*(\d{4}))?\b",
+        lower,
+    )
+    if absolute_match:
+        month = MONTHS[absolute_match.group(1)]
+        day = int(absolute_match.group(2))
+        year = int(absolute_match.group(3) or now.year)
+        try:
+            parsed = datetime(year, month, day, tzinfo=timezone.utc)
+        except ValueError:
+            return None
+        if not absolute_match.group(3) and parsed > now:
+            parsed = datetime(year - 1, month, day, tzinfo=timezone.utc)
+        return max(0.0, (now - parsed).total_seconds() / 86400)
+
+    return None
+
+
 def relevance_score(text: str, keywords: Sequence[str]) -> Tuple[int, List[str]]:
     lower = normalize_text(text)
     matches: List[str] = []
@@ -812,6 +886,25 @@ def detect_candidates(
         fingerprint = post_fingerprint(text, post_url)
         if fingerprint in seen_posts:
             debug_print(args, f"already seen: {fingerprint[:10]}")
+            continue
+
+        age_days = post_age_days(text)
+        max_age_days = getattr(args, "max_post_age_days", 30)
+        if max_age_days > 0 and age_days is not None and age_days > max_age_days:
+            snippet = text.replace("\n", " ")[:220]
+            print(f"Candidate post snippet: {snippet}")
+            print(f"Skipped stale post: age about {round(age_days)} days; max is {max_age_days:g} days.")
+            mark_seen(
+                seen_posts,
+                fingerprint,
+                group_url,
+                post_url,
+                "stale",
+                f"Post age about {round(age_days)} days exceeds max {max_age_days:g} days.",
+                0,
+                ["stale"],
+            )
+            log_run(group_url, post_url, "stale", f"Post age about {round(age_days)} days.", 0, ["stale"])
             continue
 
         score, matches = relevance_score(text, keywords)
@@ -2118,6 +2211,7 @@ def parse_args():
     parser.add_argument("--max-scrolls-per-group", type=int, default=60)
     parser.add_argument("--min-scrolls-per-group", type=int, default=15)
     parser.add_argument("--empty-scroll-limit", type=int, default=15)
+    parser.add_argument("--max-post-age-days", type=float, default=30)
     parser.add_argument("--cooldown-min", type=float, default=120)
     parser.add_argument("--cooldown-max", type=float, default=180)
     parser.add_argument("--fast-test", action="store_true")
