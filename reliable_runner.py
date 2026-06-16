@@ -400,6 +400,36 @@ def log_draft(candidate: CandidatePost, group_url: str, draft: str, status: str)
     )
 
 
+def recent_draft_texts(limit: int = 80) -> List[str]:
+    if not DRAFT_QUEUE_PATH.exists():
+        return []
+    try:
+        with open(DRAFT_QUEUE_PATH, "r", encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return []
+    drafts = [
+        (row.get("draft") or "").strip()
+        for row in rows[-limit:]
+        if (row.get("draft") or "").strip() and (row.get("draft") or "").strip().upper() != "SKIP"
+    ]
+    return drafts
+
+
+def draft_repeats_recently(draft: str, avoid_texts: Sequence[str]) -> bool:
+    normalized = normalize_text(draft)
+    if not normalized or normalized == "skip":
+        return False
+    normalized_prefix = normalized[:120]
+    for previous in avoid_texts:
+        previous_normalized = normalize_text(previous)
+        if not previous_normalized or previous_normalized == "skip":
+            continue
+        if normalized == previous_normalized or normalized_prefix == previous_normalized[:120]:
+            return True
+    return False
+
+
 def debug_print(args, message: str) -> None:
     if args.debug:
         print(f"[debug] {message}")
@@ -720,7 +750,12 @@ def extract_context_from_article(article: WebElement) -> Tuple[str, List[str]]:
     return original, comment_lines[:5]
 
 
-def local_generate_draft(post_text: str, comments: Sequence[str], matches: Sequence[str]) -> str:
+def local_generate_draft(
+    post_text: str,
+    comments: Sequence[str],
+    matches: Sequence[str],
+    avoid_texts: Optional[Sequence[str]] = None,
+) -> str:
     combined = normalize_text(f"{post_text}\n{' '.join(comments)}")
     if not any(signal in combined for signal in STRONG_SIGNALS) and "business context" not in matches:
         return "SKIP"
@@ -807,17 +842,26 @@ def local_generate_draft(post_text: str, comments: Sequence[str], matches: Seque
 
     rotated = options[seed % len(options):] + options[:seed % len(options)]
     for draft in rotated:
-        if normalize_text(draft)[:90] not in existing_comment_text:
+        if normalize_text(draft)[:90] not in existing_comment_text and not draft_repeats_recently(draft, avoid_texts or []):
             print(f"[local-generator] angle={angle}")
+            return draft
+    for draft in rotated:
+        if normalize_text(draft)[:90] not in existing_comment_text:
+            print(f"[local-generator] angle={angle}; recent drafts exhausted")
             return draft
     print(f"[local-generator] angle={angle}")
     return rotated[0]
 
 
-def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequence[str]) -> str:
+def openai_generate_draft(
+    post_text: str,
+    comments: Sequence[str],
+    matches: Sequence[str],
+    avoid_texts: Optional[Sequence[str]] = None,
+) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return local_generate_draft(post_text, comments, matches)
+        return local_generate_draft(post_text, comments, matches, avoid_texts)
 
     try:
         from openai import OpenAI
@@ -834,7 +878,7 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
                         "Write one short, natural Facebook comment for a human to review. "
                         "Every non-SKIP comment must mention Geodo exactly once, naturally, and tie it to a specific point from the post. "
                         "Never include a link by default. Do not make Geodo the whole comment. "
-                        "Avoid hype, spam, generic praise, and repeating existing comments. "
+                        "Avoid hype, spam, generic praise, and repeating existing comments or recent drafts. "
                         "Use 1-3 sentences and sound like a normal founder/operator responding in context. "
                         "Return exactly SKIP if the post is not clearly about B2B sales, GTM, "
                         "lead generation, outbound, CRM, SaaS, growth, pricing, pipeline, "
@@ -849,7 +893,9 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
                         f"Matched keywords/signals: {', '.join(matches)}\n\n"
                         f"Original post:\n{post_text[:2400]}\n\n"
                         f"Visible existing comments/replies, avoid repeating them:\n"
-                        f"{chr(10).join('- ' + c for c in comments[:5])}"
+                        f"{chr(10).join('- ' + c for c in comments[:5])}\n\n"
+                        f"Recent Geodo drafts to avoid copying:\n"
+                        f"{chr(10).join('- ' + d for d in list(avoid_texts or [])[-8:])}"
                     ),
                 },
             ],
@@ -857,11 +903,14 @@ def openai_generate_draft(post_text: str, comments: Sequence[str], matches: Sequ
         draft = response.choices[0].message.content.strip()
         if draft.upper() != "SKIP" and "geodo" not in normalize_text(draft):
             print("[warn] OpenAI draft did not mention Geodo, using local generator.")
-            return local_generate_draft(post_text, comments, matches)
+            return local_generate_draft(post_text, comments, matches, avoid_texts)
+        if draft_repeats_recently(draft, avoid_texts or []):
+            print("[warn] OpenAI draft repeated a recent draft, using local generator.")
+            return local_generate_draft(post_text, comments, matches, avoid_texts)
         return draft
     except Exception as exc:
         print(f"[warn] OpenAI generation failed, using local generator: {exc}")
-        return local_generate_draft(post_text, comments, matches)
+        return local_generate_draft(post_text, comments, matches, avoid_texts)
 
 
 def find_target_article(driver: webdriver.Chrome, expected_text: str) -> Optional[WebElement]:
@@ -1122,7 +1171,7 @@ def type_draft_in_review_tab(
             return False
 
         original_post, comments = extract_context_from_article(article)
-        draft = openai_generate_draft(original_post, comments, candidate.matches)
+        draft = openai_generate_draft(original_post, comments, candidate.matches, recent_draft_texts())
         print(f"Generated draft: {draft}")
 
         if draft.strip().upper() == "SKIP":
