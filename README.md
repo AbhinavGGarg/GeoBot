@@ -1,8 +1,10 @@
 # Geodo Facebook Draft Assistant
 
-This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery and human-reviewed comment drafting.
+This repo now uses `reliable_runner.py` as the main Selenium runner for Facebook group discovery, contextual comment drafting, and optional auto-submit demos.
 
-Important: this tool only drafts comments. It does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
+Important: draft-only is the default. In default mode, the runner does not auto-submit comments, press Enter to post, or click Facebook's final send/post button. Draft tabs are left open so a human can review, edit, and decide whether to post.
+
+Optional full-auto mode: pass `--auto-submit` when you explicitly want the runner to submit drafted comments. In that mode, it types the comment, clicks the nearby Facebook comment send/post control, closes the posted tab, waits for the configured cooldown, and continues scanning.
 
 Older runners such as `main.py`, `batch_runner.py`, `discover_posts.py`, `live_runner.py`, and `live_runner_v2.py` are experimental/deprecated. Keep them only as reference code; use `reliable_runner.py` for the current flow.
 
@@ -46,6 +48,12 @@ Normal run:
 python reliable_runner.py --groups group_urls.csv --keywords keywords.txt --max-drafts 5
 ```
 
+Full-auto demo run:
+
+```bash
+python reliable_runner.py --groups group_urls.csv --keywords keywords.txt --max-drafts 5 --auto-submit --debug
+```
+
 Fast test run with short waits:
 
 ```bash
@@ -60,9 +68,9 @@ Demo mode with no OpenAI key:
 OPENAI_API_KEY= python reliable_runner.py --fast-test --max-drafts 1
 ```
 
-Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and only leaves a review tab open after a draft was successfully typed.
+Chrome uses the local `chrome_data/` profile folder so you can log into Facebook manually once and reuse that session. The runner starts with one scanner tab, reuses it for group browsing, and leaves a review tab open after a draft was successfully typed in draft-only mode. In `--auto-submit` mode, it closes the posted tab and returns to scanning.
 
-For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft per group, leaves that drafted tab open for review, then moves on.
+For demos, keep `--debug` on so you can see candidate snippets, relevance scores, matched keywords, composer detection, and draft output in Terminal. The runner creates at most one draft or posted comment per group, then moves on.
 
 Group order is shuffled by default, and any group checked recently is skipped for `--group-revisit-hours 72` hours unless you pass `--repeat`. This prevents restarts from opening the same first few groups over and over.
 
@@ -73,7 +81,7 @@ The runner creates and maintains:
 - `state/seen_posts.json`: stable post fingerprints that have already been drafted, skipped, or found not commentable.
 - `state/group_status.json`: last checked timestamp and status per group.
 - `state/run_log.csv`: group-level and post-level scan events.
-- `state/draft_queue.csv`: drafts that were typed or skipped by the generator.
+- `state/draft_queue.csv`: drafts that were typed, skipped by the generator, or auto-posted.
 
 Group statuses are:
 
@@ -83,6 +91,7 @@ Group statuses are:
 - `not_commentable`
 - `no_matches`
 - `drafted`
+- `posted`
 - `error`
 
 By default, the runner makes one pass through `group_urls.csv` and does not repeat duplicate group URLs in the same run. It also skips groups previously marked as private, inactive, not commentable, or no-match so it does not keep reopening bad group URLs. Pass `--repeat` to ignore those skips for a run.
@@ -110,5 +119,7 @@ python reliable_runner.py \
   --cooldown-max 180 \
   --max-open-draft-tabs 5
 ```
+
+Add `--auto-submit` only when you want full-auto posting. Without it, the tool stays in draft-only review mode.
 
 Use `--no-close-skipped-tabs` only when debugging failed review tabs. The default is to close tabs where a draft was not typed.

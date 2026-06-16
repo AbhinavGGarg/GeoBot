@@ -64,6 +64,7 @@ GROUP_STATUSES = {
     "not_commentable",
     "no_matches",
     "drafted",
+    "posted",
     "error",
 }
 
@@ -952,6 +953,137 @@ def paste_draft(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
     return normalize_text(draft[:30])[:12] in normalize_text(typed_text)
 
 
+def comment_box_text(driver: webdriver.Chrome, box: WebElement) -> str:
+    try:
+        return (box.text or box.get_attribute("innerText") or "").strip()
+    except Exception:
+        try:
+            active = driver.switch_to.active_element
+            return (active.text or active.get_attribute("innerText") or "").strip()
+        except Exception:
+            return ""
+
+
+def draft_still_present(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
+    needle = normalize_text(draft[:40])[:16]
+    deadline = time.time() + 4
+    while time.time() < deadline:
+        current = normalize_text(comment_box_text(driver, box))
+        if not current or needle not in current:
+            return False
+        time.sleep(0.5)
+    return True
+
+
+def click_or_js_click(driver: webdriver.Chrome, element: WebElement) -> bool:
+    try:
+        element.click()
+        return True
+    except Exception:
+        try:
+            driver.execute_script("arguments[0].click();", element)
+            return True
+        except Exception:
+            return False
+
+
+def submit_comment(driver: webdriver.Chrome, box: WebElement, draft: str) -> bool:
+    """Click Facebook's nearby comment submit control, falling back to Enter."""
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", box)
+    time.sleep(0.4)
+    try:
+        box.click()
+    except Exception:
+        pass
+
+    try:
+        container = driver.execute_script(
+            "return arguments[0].closest('[role=\"dialog\"], [role=\"article\"], form') || document.body;",
+            box,
+        )
+    except Exception:
+        container = driver
+
+    scopes = [container, driver] if container else [driver]
+    buttons: List[WebElement] = []
+    for scope in scopes:
+        try:
+            buttons.extend(scope.find_elements(By.XPATH, ".//*[@role='button']"))
+        except Exception:
+            continue
+
+    try:
+        box_rect = driver.execute_script(
+            "const r = arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};",
+            box,
+        )
+    except Exception:
+        box_rect = {"x": 0, "y": 0, "w": 0, "h": 0}
+    box_center_x = box_rect["x"] + box_rect["w"] / 2
+    box_center_y = box_rect["y"] + box_rect["h"] / 2
+
+    scored = []
+    seen_ids = set()
+    for button in buttons:
+        try:
+            internal_id = button.id
+            if internal_id in seen_ids:
+                continue
+            seen_ids.add(internal_id)
+            if not button.is_displayed() or not button.is_enabled():
+                continue
+            label = normalize_text(
+                " ".join(
+                    [
+                        button.get_attribute("aria-label") or "",
+                        button.get_attribute("title") or "",
+                        button.text or "",
+                    ]
+                )
+            )
+            excluded = ["emoji", "gif", "sticker", "photo", "camera", "avatar", "insert", "attach"]
+            if any(term in label for term in excluded):
+                continue
+            aria_disabled = (button.get_attribute("aria-disabled") or "").lower()
+            if aria_disabled == "true" or button.get_attribute("disabled"):
+                continue
+
+            rect = driver.execute_script(
+                "const r = arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};",
+                button,
+            )
+            center_x = rect["x"] + rect["w"] / 2
+            center_y = rect["y"] + rect["h"] / 2
+            near_composer = (
+                box_rect["y"] - 60 <= center_y <= box_rect["y"] + box_rect["h"] + 120
+                and center_x >= box_rect["x"] + box_rect["w"] * 0.45
+            )
+            label_says_submit = any(term in label for term in ["send", "post", "comment", "reply"])
+            if not near_composer and not label_says_submit:
+                continue
+
+            distance = abs(center_x - box_center_x) + abs(center_y - box_center_y)
+            label_bonus = -1000 if label_says_submit else 0
+            scored.append((label_bonus + distance, button, label or "near composer button"))
+        except Exception:
+            continue
+
+    scored.sort(key=lambda item: item[0])
+    for _, button, label in scored[:6]:
+        print(f"Trying auto-submit control: {label}")
+        if click_or_js_click(driver, button):
+            if not draft_still_present(driver, box, draft):
+                return True
+            print("Submit control did not clear the draft; trying another candidate.")
+
+    try:
+        box.click()
+        ActionChains(driver).send_keys(Keys.ENTER).perform()
+        return not draft_still_present(driver, box, draft)
+    except Exception:
+        return False
+
+
 def type_draft_in_review_tab(
     driver: webdriver.Chrome,
     candidate: CandidatePost,
@@ -1026,6 +1158,33 @@ def type_draft_in_review_tab(
                 candidate.matches,
             )
             return False
+
+        if args.auto_submit:
+            print("Draft typed. Auto-submit enabled, submitting comment now.")
+            if submit_comment(driver, box, draft):
+                args.last_action_was_sent = True
+                mark_seen(
+                    seen_posts,
+                    candidate.fingerprint,
+                    group_url,
+                    candidate.post_url,
+                    "posted",
+                    "Comment auto-posted after draft generation.",
+                    candidate.score,
+                    candidate.matches,
+                )
+                log_draft(candidate, group_url, draft, "auto_posted")
+                log_run(
+                    group_url,
+                    candidate.post_url,
+                    "posted",
+                    "Auto-posted successfully.",
+                    candidate.score,
+                    candidate.matches,
+                )
+                print("Comment posted successfully. Continuing after cooldown.")
+                return True
+            print("Auto-submit failed. Leaving the typed draft open for manual review.")
 
         mark_seen(
             seen_posts,
@@ -1122,10 +1281,15 @@ def scan_group(
 
             success = type_draft_in_review_tab(driver, candidate, group_url, seen_posts, args)
             if success:
-                open_draft_tabs.append(driver.current_window_handle)
+                if args.last_action_was_sent:
+                    close_current_tab_and_return(driver, scanner_tab)
+                else:
+                    open_draft_tabs.append(driver.current_window_handle)
                 drafted += 1
-                update_group_status(group_status, group_url, "drafted", "One draft created.", drafted)
-                print("Moving to next group after successful draft.")
+                status = "posted" if args.last_action_was_sent else "drafted"
+                reason = "One comment posted." if args.last_action_was_sent else "One draft created."
+                update_group_status(group_status, group_url, status, reason, drafted)
+                print(f"Moving to next group after successful {status}.")
                 driver.switch_to.window(scanner_tab)
                 return drafted
 
@@ -1219,11 +1383,15 @@ def run(args) -> None:
     open_draft_tabs: List[str] = []
     total_drafts = 0
     args.stop_requested = False
+    args.last_action_was_sent = False
 
     print("\nReliable Geodo Facebook draft assistant starting.")
-    print("It drafts only. It will not press Enter or click the Facebook send/post button.")
+    if args.auto_submit:
+        print("AUTO-SUBMIT mode is on. It will click the Facebook comment send/post control after drafting.")
+    else:
+        print("Draft-only mode is on. It will not press Enter or click the Facebook send/post button.")
     if args.approve_before_send:
-        print("--approve-before-send is deprecated and ignored. Draft-only continuous mode is active.")
+        print("--approve-before-send is deprecated and ignored. Use --auto-submit for explicit auto-post mode.")
     print("Make sure Chrome is logged into Facebook before scanning begins.\n")
 
     try:
@@ -1232,7 +1400,10 @@ def run(args) -> None:
 
         for index, group_url in enumerate(group_urls, start=1):
             if total_drafts >= args.max_drafts:
-                print(f"Reached --max-drafts ({args.max_drafts}). Leaving draft tabs open for review.")
+                if args.auto_submit:
+                    print(f"Reached --max-drafts ({args.max_drafts}).")
+                else:
+                    print(f"Reached --max-drafts ({args.max_drafts}). Leaving draft tabs open for review.")
                 return
 
             if group_url in visited_this_run and not args.repeat:
@@ -1249,6 +1420,7 @@ def run(args) -> None:
                 continue
 
             before = total_drafts
+            args.last_action_was_sent = False
             created = scan_group(
                 driver,
                 scanner_tab,
@@ -1277,10 +1449,14 @@ def run(args) -> None:
                 if status_record.get("status") in {"", "ok"}:
                     update_group_status(group_status, group_url, "no_matches", "No draft created.")
 
-        print(f"\nFinished one pass through group list. Drafts created: {total_drafts}.")
-        print("Review any open draft tabs manually.")
+        label = "posts/comments completed" if args.auto_submit else "drafts created"
+        print(f"\nFinished one pass through group list. {label.title()}: {total_drafts}.")
+        if not args.auto_submit:
+            print("Review any open draft tabs manually.")
     except KeyboardInterrupt:
-        print("\nStopped by Control+C. Review any open draft tabs manually.")
+        print("\nStopped by Control+C.")
+        if not args.auto_submit:
+            print("Review any open draft tabs manually.")
     finally:
         if args.close_when_done:
             driver.quit()
@@ -1289,7 +1465,7 @@ def run(args) -> None:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Reliable human-reviewed Geodo Facebook group draft assistant")
+    parser = argparse.ArgumentParser(description="Reliable Geodo Facebook group draft and optional auto-submit assistant")
     parser.add_argument("--groups", default="group_urls.csv")
     parser.add_argument("--keywords", default="keywords.txt")
     parser.add_argument("--max-drafts", type=int, default=5)
@@ -1307,6 +1483,7 @@ def parse_args():
     parser.add_argument("--shuffle-groups", dest="shuffle_groups", action="store_true", default=True)
     parser.add_argument("--no-shuffle-groups", dest="shuffle_groups", action="store_false")
     parser.add_argument("--approve-before-send", action="store_true")
+    parser.add_argument("--auto-submit", action="store_true")
     parser.add_argument("--max-open-draft-tabs", type=int, default=5)
     parser.add_argument("--close-skipped-tabs", dest="close_skipped_tabs", action="store_true", default=True)
     parser.add_argument("--no-close-skipped-tabs", dest="close_skipped_tabs", action="store_false")
