@@ -54,7 +54,7 @@ Then open:
 http://127.0.0.1:8787
 ```
 
-The dashboard lets you choose comment automation, comment drafting, standalone post publishing, or standalone post drafting from one page. It runs the same local Selenium runner underneath, so Chrome still opens on your machine with your logged-in Facebook profile.
+The dashboard lets you choose comment automation, comment drafting, standalone post publishing, or standalone post drafting from one page. It runs the same local Selenium runner underneath, so Chrome still opens on your machine with your logged-in Facebook profile. GeoBot only takes one action per post; it does not stack multiple comments or replies onto the same post.
 
 Normal run:
 

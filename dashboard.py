@@ -121,7 +121,7 @@ def checkbox(form: Dict[str, List[str]], name: str) -> bool:
 
 def build_command(form: Dict[str, List[str]]) -> tuple[str, List[str], Dict[str, str]]:
     mode = form.get("mode", ["comment_auto"])[0]
-    max_items = int_from_form(form, "max_items", 3, 1, 50)
+    max_items = int_from_form(form, "max_items", 1, 1, 50)
     cooldown_min = float_from_form(form, "cooldown_min", 120, 0, 3600)
     cooldown_max = float_from_form(form, "cooldown_max", 180, cooldown_min, 3600)
     max_tabs = int_from_form(form, "max_tabs", 5, 1, 30)
@@ -299,8 +299,9 @@ def page() -> str:
 
         <div class="grid">
           <div>
-            <label for="max_items">Max comments/posts</label>
-            <input id="max_items" name="max_items" type="number" min="1" max="50" value="3">
+            <label for="max_items">Max different posts/groups this run</label>
+            <input id="max_items" name="max_items" type="number" min="1" max="50" value="1">
+            <div class="hint">GeoBot only takes one action per post.</div>
           </div>
           <div>
             <label for="max_tabs">Max open tabs</label>

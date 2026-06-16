@@ -644,7 +644,6 @@ def article_has_comment_affordance(article: WebElement) -> bool:
         ".//*[contains(@aria-label, 'Comment')]",
         ".//*[contains(@aria-label, 'Leave a comment')]",
         ".//*[contains(text(), 'Comment')]",
-        ".//*[contains(text(), 'Reply')]",
         ".//*[@role='button' and .//*[contains(text(), 'Comment')]]",
     ]
     for xpath in xpaths:
@@ -964,18 +963,54 @@ def find_target_article(driver: webdriver.Chrome, expected_text: str) -> Optiona
     return best_article or (find_articles(driver)[0] if find_articles(driver) else None)
 
 
-def find_comment_box_in(elements_root, allow_generic_editor: bool = False) -> Optional[WebElement]:
+def element_accessible_text(element: WebElement) -> str:
+    try:
+        return normalize_text(
+            " ".join(
+                [
+                    element.get_attribute("aria-label") or "",
+                    element.get_attribute("aria-placeholder") or "",
+                    element.get_attribute("placeholder") or "",
+                    element.get_attribute("title") or "",
+                    element.text or "",
+                    element.get_attribute("innerText") or "",
+                ]
+            )
+        )
+    except Exception:
+        return ""
+
+
+def element_y(driver: webdriver.Chrome, element: WebElement) -> float:
+    try:
+        rect = driver.execute_script(
+            "const r = arguments[0].getBoundingClientRect(); return {y:r.y,h:r.height};",
+            element,
+        )
+        return float(rect["y"]) + float(rect["h"]) / 2
+    except Exception:
+        return 0.0
+
+
+def find_comment_box_in(
+    driver: webdriver.Chrome,
+    elements_root,
+    allow_generic_editor: bool = False,
+) -> Optional[WebElement]:
     selectors = [
         'div[contenteditable="true"][aria-label*="comment" i]',
         'div[contenteditable="true"][aria-label*="Comment"]',
         'div[contenteditable="true"][aria-label*="Write"]',
+        'div[contenteditable="true"][aria-label*="Answer" i]',
         'div[contenteditable="true"][aria-placeholder*="comment" i]',
+        'div[contenteditable="true"][aria-placeholder*="Answer" i]',
         'div[role="textbox"][contenteditable="true"]',
         '[role="textbox"][aria-label*="comment" i]',
         '[role="textbox"][aria-placeholder*="comment" i]',
     ]
     if allow_generic_editor:
         selectors.append('div[contenteditable="true"][data-lexical-editor="true"]')
+    candidates: List[Tuple[int, float, WebElement]] = []
     for selector in selectors:
         try:
             boxes = elements_root.find_elements(By.CSS_SELECTOR, selector)
@@ -985,15 +1020,33 @@ def find_comment_box_in(elements_root, allow_generic_editor: bool = False) -> Op
             continue
         for box in boxes:
             try:
-                if box.is_displayed():
-                    return box
+                if not box.is_displayed():
+                    continue
+                label = element_accessible_text(box)
+                if "reply" in label:
+                    continue
+                typed_text = normalize_text((box.text or box.get_attribute("innerText") or "").strip())
+                if typed_text and "comment as" not in label and "answer as" not in label:
+                    continue
+                score = 0
+                if "comment" in label or "answer" in label or "write" in label:
+                    score += 100
+                if selector != 'div[contenteditable="true"][data-lexical-editor="true"]':
+                    score += 20
+                candidates.append((score, element_y(driver, box), box))
             except Exception:
                 continue
-    return None
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return candidates[0][2]
 
 
 def open_comment_box(driver: webdriver.Chrome, article: WebElement) -> Optional[WebElement]:
-    box = find_comment_box_in(article, allow_generic_editor=True) or find_comment_box_in(driver)
+    box = (
+        find_comment_box_in(driver, article, allow_generic_editor=False)
+        or find_comment_box_in(driver, driver, allow_generic_editor=False)
+    )
     if box:
         return box
 
@@ -1002,7 +1055,6 @@ def open_comment_box(driver: webdriver.Chrome, article: WebElement) -> Optional[
         ".//*[contains(@aria-label, 'Comment')]",
         ".//*[contains(@aria-label, 'Leave a comment')]",
         ".//*[contains(text(), 'Comment')]",
-        ".//*[contains(text(), 'Reply')]",
         ".//*[@role='button' and .//*[contains(text(), 'Comment')]]",
     ]
     for xpath in xpaths:
@@ -1015,7 +1067,10 @@ def open_comment_box(driver: webdriver.Chrome, article: WebElement) -> Optional[
                 if element.is_displayed():
                     element.click()
                     time.sleep(1)
-                    box = find_comment_box_in(article, allow_generic_editor=True) or find_comment_box_in(driver)
+                    box = (
+                        find_comment_box_in(driver, article, allow_generic_editor=True)
+                        or find_comment_box_in(driver, driver, allow_generic_editor=True)
+                    )
                     if box:
                         return box
             except Exception:
@@ -1132,7 +1187,7 @@ def submit_comment(driver: webdriver.Chrome, box: WebElement, draft: str) -> boo
                     ]
                 )
             )
-            excluded = ["emoji", "gif", "sticker", "photo", "camera", "avatar", "insert", "attach"]
+            excluded = ["reply", "replies", "emoji", "gif", "sticker", "photo", "camera", "avatar", "insert", "attach"]
             if any(term in label for term in excluded):
                 continue
             aria_disabled = (button.get_attribute("aria-disabled") or "").lower()
@@ -1149,7 +1204,7 @@ def submit_comment(driver: webdriver.Chrome, box: WebElement, draft: str) -> boo
                 box_rect["y"] - 60 <= center_y <= box_rect["y"] + box_rect["h"] + 120
                 and center_x >= box_rect["x"] + box_rect["w"] * 0.45
             )
-            label_says_submit = any(term in label for term in ["send", "post", "comment", "reply"])
+            label_says_submit = any(term in label for term in ["send", "post comment", "post"])
             if not near_composer and not label_says_submit:
                 continue
 
